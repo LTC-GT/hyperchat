@@ -1,0 +1,32 @@
+{
+  "name": "hyperchat",
+  "version": "0.1.0",
+  "description": "A DAT-based P2P chat application using Hypercore",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js",
+    "dev": "node --watch src/main.js",
+    "web": "node src/web-server.js",
+    "test": "node test/ci-runner.js",
+    "test:unit": "node --test test/encoding.test.js test/feed-manager.test.js",
+    "test:integration": "node test/integration.test.js",
+    "test:crypto": "node test/crypto.test.js",
+    "test:watch": "node --test --watch test/**/*.test.js",
+    "test:ci": "node test/ci-runner.js",
+    "pretest": "node test/setup.js"
+  },
+  "keywords": ["hypercore", "p2p", "chat", "dat"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "hypercore": "^10.0.0",
+    "hyperswarm": "^4.0.0",
+    "b4a": "^1.6.0",
+    "compact-encoding": "^2.12.0",
+    "openpgp": "^6.0.2"
+  },
+  "devDependencies": {
+    "tmp": "^0.2.1"
+  }
+}

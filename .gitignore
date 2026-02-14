@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Storage (Hypercore feeds)
+storage/
+test-storage/
+**/storage-*/
+
+# GPG keys (DO NOT COMMIT)
+*.asc
+*.gpg
+*.pgp
+private-key.*
+public-key.*
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+coverage/
+.nyc_output/

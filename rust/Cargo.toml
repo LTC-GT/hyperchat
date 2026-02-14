@@ -1,0 +1,24 @@
+[package]
+name = "hyperchat"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hyperchat Contributors"]
+description = "A DAT-based P2P chat application using Hypercore"
+license = "MIT"
+
+[dependencies]
+# Hypercore support
+# Note: Hypercore Rust implementation is in development
+# For now, we recommend using the JavaScript version
+tokio = { version = "1.35", features = ["full"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[[bin]]
+name = "hyperchat"
+path = "src/main.rs"

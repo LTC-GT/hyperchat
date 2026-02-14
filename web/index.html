@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hyperchat - P2P Chat</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>🚀 Hyperchat</h1>
+      <p class="subtitle">P2P Chat on Hypercore Protocol</p>
+      <div class="user-info">
+        <span id="username">Loading...</span>
+        <button id="show-key-btn" class="btn-small">Show Key</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <h3>Following</h3>
+        <div id="following-list" class="following-list">
+          <p class="empty-state">Not following anyone yet</p>
+        </div>
+        
+        <div class="follow-section">
+          <input 
+            type="text" 
+            id="follow-input" 
+            placeholder="Public key to follow"
+            class="input-text"
+          >
+          <button id="follow-btn" class="btn-primary">Follow</button>
+        </div>
+
+        <div class="stats">
+          <h4>Network Stats</h4>
+          <div class="stat-item">
+            <span>Peers:</span>
+            <span id="peer-count">0</span>
+          </div>
+          <div class="stat-item">
+            <span>Messages:</span>
+            <span id="message-count">0</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Timeline -->
+      <main class="timeline-section">
+        <div class="compose-section">
+          <div class="compose-tabs">
+            <button class="tab-btn active" data-type="message">💬 Message</button>
+            <button class="tab-btn" data-type="status">📢 Status</button>
+            <button class="tab-btn" data-type="microblog">✍️ Microblog</button>
+          </div>
+          
+          <textarea 
+            id="compose-input" 
+            placeholder="What's on your mind?"
+            class="compose-textarea"
+            maxlength="1000"
+          ></textarea>
+          
+          <div class="compose-actions">
+            <span id="char-count" class="char-count"></span>
+            <button id="post-btn" class="btn-primary">Post</button>
+          </div>
+        </div>
+
+        <div class="timeline">
+          <h2>Timeline</h2>
+          <div id="timeline-feed" class="timeline-feed">
+            <div class="empty-state">
+              <p>No messages yet. Start posting or follow someone!</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal for showing key -->
+  <div id="key-modal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>Your Public Key</h2>
+      <p>Share this key with others to let them follow you:</p>
+      <div class="key-display">
+        <code id="public-key"></code>
+      </div>
+      <button id="copy-key-btn" class="btn-primary">Copy to Clipboard</button>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
