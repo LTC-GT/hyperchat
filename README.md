@@ -12,6 +12,13 @@ A decentralized P2P chat application with **end-to-end GPG encryption** built on
 [![Status](https://img.shields.io/badge/status-alpha-orange)]()
 [![Code Size](https://img.shields.io/badge/code-~1.4k%20lines-blue)]()
 
+## 📸 Screenshots
+![image](/.github/media/cliss.png)
+![image](/.github/media/webss.png)
+
+> [!TIP]
+> Start the web interface with `npm run web` and open http://localhost:3000 and you'll see active peers and messages replicating in real-time as you follow users and send messages from the CLI!
+
 ## 🏗️ Project Status
 
 **⚠️ Alpha - Work in Progress**
@@ -70,6 +77,8 @@ npm install
 ```bash
 # Start as Alice (GPG keys auto-generated)
 npm start alice
+# or
+npm run start alice
 ```
 
 Or import your existing GPG keys:
@@ -166,10 +175,16 @@ hyperchat/
 │   ├── index.html
 │   ├── styles.css
 │   └── app.js
+├── rust/                    # Rust implementation (stub)
+│   └── src/                 # See note below
 ├── storage/                 # Local feed storage (auto-created)
 ├── ARCHITECTURE.md          # Technical documentation
 └── README.md                # This file
 ```
+
+### 🦀 About the Rust Implementation
+
+The `rust/` folder contains a **stub implementation** and proof-of-concept for a Rust version of Hyperchat that demonstrates the message type system (messages, status updates, microblogs) with serialization/validation, but it doesn't actually implement the full P2P functionality because the Rust ecosystem for Hypercore is still maturing compared to the JavaScript/Node.js version. When run, it displays a warning directing users to use the fully-functional JavaScript implementation instead, while showcasing how the message structures could work in Rust and serving as a foundation for future contributors who want to build a complete Rust port once the Hypercore Rust crates become more feature-complete.
 
 ## 💬 Message Types
 
@@ -269,7 +284,7 @@ All 6 crypto tests pass! ✅
 npm install
 
 # Start the CLI
-npm start <username>
+npm run start <username>
 
 # Run tests
 npm test

@@ -52,12 +52,14 @@ class Hyperchat {
     
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('✅ YOUR SERVER IS NOW LIVE');
-    console.log(`\n🔑 GPG Fingerprint (Share this as your ID):`);
+    console.log(`\n🔑 GPG Fingerprint (Your cryptographic identity):`);
     console.log(`   ${gpgFingerprint}`);
-    console.log(`\n📡 Feed Discovery Key:`);
+    console.log(`\n📡 Feed Key (Share this for others to follow you):`);
     console.log(`   ${feedKey}`);
     console.log('\n🔒 End-to-End Encryption: ENABLED');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.log('This is free software licensed under LGPLv3. A copy of the license should');
+    console.log('have been provided with this software. If not, see: https://www.gnu.org/licenses/lgpl-3.0.html\n');
     console.log('📨 INCOMING MESSAGES:');
     console.log('   (Encrypted messages from followed users will appear here...)\n');
     
@@ -155,7 +157,7 @@ class Hyperchat {
           } else {
             console.log('Usage: /follow <feed-key> [username]');
             console.log('\nExample: /follow dcba522ef06b93ccec0fc5d9e841890... bob');
-            console.log('\nNote: Use the feed discovery key (64 hex chars), not the GPG fingerprint.');
+            console.log('\nNote: Use the feed key (64 hex chars), not the GPG fingerprint.');
             console.log('      The other user can share their key with: /mykey');
           }
           break;
@@ -428,7 +430,7 @@ class Hyperchat {
     console.log('  /unfollow <key>         Unfollow a user');
     console.log('  /following              List users you follow');
     console.log('  /timeline [n]           Show timeline (default: 20 messages)');
-    console.log('  /mykey                  Show your feed discovery key');
+    console.log('  /mykey                  Show your feed key for others to follow you');
     console.log('  /mygpg                  Show your GPG public key');
     console.log('  /exportkey <dir>        Export your GPG keys to directory');
     console.log('  /stats                  Show network statistics');

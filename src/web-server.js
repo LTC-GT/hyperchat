@@ -54,6 +54,9 @@ server.listen(PORT, () => {
 Server running at: http://localhost:${PORT}
 Web directory: ${WEB_DIR}
 
+This is free software licensed under LGPLv3. A copy of the license should
+have been provided with this software. If not, see: https://www.gnu.org/licenses/lgpl-3.0.html
+
 Press Ctrl+C to stop the server.
   `);
 });

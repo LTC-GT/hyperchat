@@ -34,11 +34,6 @@ export class FeedManager {
     this.ownFeed = new Hypercore(`${this.storage}/${username}/feed`);
     await this.ownFeed.ready();
     
-    console.log('\nYour Hypercore feed initialized!');
-    console.log('Feed Discovery Key:', b4a.toString(this.ownFeed.discoveryKey, 'hex'));
-    console.log('\nYour GPG Identity:');
-    console.log('Fingerprint:', this.crypto.getFingerprint());
-    
     // Post public key announcement if this is a new feed
     if (this.ownFeed.length === 0) {
       await this.announcePublicKey();
@@ -139,7 +134,7 @@ export class FeedManager {
         `Invalid feed key length. Expected 64 hex characters (32 bytes), got ${cleanHex.length}.\n` +
         `Feed keys look like: dcba522ef06b93ccec0fc5d9e84189038475b8f94018ef92010756e329482faa\n` +
         `GPG fingerprints are different and cannot be used to follow users.\n` +
-        `Use /mykey in the other user's client to get their feed discovery key.`
+        `Use /mykey in the other user's client to get their feed key.`
       );
     }
     
