@@ -11,6 +11,7 @@ A decentralized P2P chat application with **end-to-end GPG encryption** built on
 [![Encryption](https://img.shields.io/badge/encryption-4096--bit%20RSA-blue)](./ARCHITECTURE.md)
 [![Status](https://img.shields.io/badge/status-alpha-orange)]()
 [![Code Size](https://img.shields.io/badge/code-~1.4k%20lines-blue)]()
+[![Hyperchat CI](https://github.com/LTC-GT/hyperchat/actions/workflows/ci.yml/badge.svg)](https://github.com/LTC-GT/hyperchat/actions/workflows/ci.yml)
 
 ## 📸 Screenshots
 ![image](/.github/media/cliss.png)
