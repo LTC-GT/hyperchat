@@ -9,9 +9,11 @@
     "dev": "node --watch src/main.js",
     "web": "node src/web-server.js",
     "test": "node test/ci-runner.js",
-    "test:unit": "node --test test/encoding.test.js test/feed-manager.test.js",
+    "test:unit": "node --test test/encoding.test.js test/feed-manager.test.js test/crypto-manager.test.js test/feed-manager-extended.test.js test/feed-manager-advanced.test.js test/network-manager.test.js",
     "test:integration": "node test/integration.test.js",
+    "test:p2p": "node --test test/p2p-integration.test.js",
     "test:crypto": "node test/crypto.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/encoding.test.js test/feed-manager.test.js test/crypto-manager.test.js test/feed-manager-extended.test.js test/feed-manager-advanced.test.js test/network-manager.test.js",
     "test:watch": "node --test --watch test/**/*.test.js",
     "test:ci": "node test/ci-runner.js",
     "pretest": "node test/setup.js"

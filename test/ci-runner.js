@@ -60,9 +60,25 @@ async function main() {
     // Run feed manager tests  
     await runCommand('node', ['--test', 'test/feed-manager.test.js'], 'Feed Manager tests');
     
+    // Run crypto manager tests
+    await runCommand('node', ['--test', 'test/crypto-manager.test.js'], 'Crypto Manager tests');
+    
+    // Run extended feed manager tests
+    await runCommand('node', ['--test', 'test/feed-manager-extended.test.js'], 'Feed Manager Extended tests');
+    
+    // Run advanced feed manager tests
+    await runCommand('node', ['--test', 'test/feed-manager-advanced.test.js'], 'Feed Manager Advanced tests');
+    
+    // Run network manager tests
+    await runCommand('node', ['--test', 'test/network-manager.test.js'], 'Network Manager tests');
+    
+    // Run P2P integration tests (real network connectivity)
+    console.log('\n⚠️  P2P integration tests may take 30-60 seconds...\n');
+    await runCommand('node', ['--test', 'test/p2p-integration.test.js'], 'P2P Integration tests');
+    
     // Run integration tests (with timeout)
-    console.log('\n⚠️  Integration tests may take 30-60 seconds...\n');
-    await runCommand('node', ['test/integration.test.js'], 'Integration tests');
+    console.log('\n⚠️  Full integration tests may take 30-60 seconds...\n');
+    await runCommand('node', ['test/integration.test.js'], 'Full Integration tests');
     
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     
@@ -72,12 +88,21 @@ async function main() {
     console.log(`   Duration: ${duration}s\n`);
     console.log('Test Coverage:');
     console.log('  ✓ Encoding/decoding');
-    console.log('  ✓ Feed initialization');
-    console.log('  ✓ Message posting');
+    console.log('  ✓ Feed initialization with GPG');
+    console.log('  ✓ Message signing and encryption');
+    console.log('  ✓ Signature verification');
     console.log('  ✓ Follow/unfollow');
+    console.log('  ✓ Feed key validation');
     console.log('  ✓ Timeline aggregation');
-    console.log('  ✓ P2P networking');
-    console.log('  ✓ Multi-peer replication');
+    console.log('  ✓ Crypto key import/export');
+    console.log('  ✓ Error handling paths');
+    console.log('  ✓ Encrypted direct messages');
+    console.log('  ✓ Edge case validation');
+    console.log('  ✓ P2P networking via Hyperswarm');
+    console.log('  ✓ Real peer connections through DHT');
+    console.log('  ✓ Multi-peer message replication');
+    console.log('  ✓ Encrypted direct messages over P2P');
+    console.log('  ✓ GPG key exchange');
     console.log('  ✓ Real-time sync');
     console.log('  ✓ Offline sync\n');
     

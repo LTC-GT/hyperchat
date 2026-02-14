@@ -9,8 +9,8 @@ import { randomBytes } from 'crypto';
 /**
  * Create a temporary test directory name
  */
-export function createTempDir() {
-  return `./test-storage/test-${randomBytes(8).toString('hex')}`;
+export function createTempDir(prefix = 'test') {
+  return `./test-storage/${prefix}-${randomBytes(8).toString('hex')}`;
 }
 
 /**

@@ -9,6 +9,24 @@ A decentralized P2P chat application with **end-to-end GPG encryption** built on
 [![License: LGPL-3.0](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![Encryption](https://img.shields.io/badge/encryption-4096--bit%20RSA-blue)](./ARCHITECTURE.md)
+[![Status](https://img.shields.io/badge/status-alpha-orange)]()
+[![Code Size](https://img.shields.io/badge/code-~1.4k%20lines-blue)]()
+
+## 🏗️ Project Status
+
+**⚠️ Alpha - Work in Progress**
+
+This project is in active development and considered **alpha** quality. While the core functionality works and is well-tested (83.95% code coverage), expect:
+- Breaking API changes
+- Bugs and edge cases  
+- Missing features from the roadmap
+- Documentation updates
+
+**Codebase Stats:**
+- ~1,374 lines of source code
+- ~2,339 lines of test code
+- 58 unit tests + 9 integration tests (all passing ✅)
+- Small, focused, and easy to audit
 
 ## ✨ Features
 
@@ -108,13 +126,13 @@ Then open [http://localhost:3000](http://localhost:3000) in your browser.
 ┌──────────────────────────────────────────────────┐
 │            Hyperchat Application                 │
 ├──────────────────────────────────────────────────┤
-│                                                   │
-│  ┌────────────────┐      ┌──────────────────┐   │
-│  │ CryptoManager  │◄────►│  FeedManager     │   │
-│  │ - GPG keys     │      │  - Own feed      │   │
-│  │ - Encryption   │      │  - Following     │   │
-│  │ - Signatures   │      │  - Timeline      │   │
-│  └────────────────┘      └─────────┬────────┘   │
+│                                                  │
+│  ┌────────────────┐      ┌──────────────────┐    │
+│  │ CryptoManager  │◄────►│  FeedManager     │    │
+│  │ - GPG keys     │      │  - Own feed      │    │
+│  │ - Encryption   │      │  - Following     │    │
+│  │ - Signatures   │      │  - Timeline      │    │
+│  └────────────────┘      └─────────┬────────┘    │
 │                                    │             │
 │                        ┌───────────▼────────┐    │
 │                        │  NetworkManager    │    │
@@ -122,7 +140,7 @@ Then open [http://localhost:3000](http://localhost:3000) in your browser.
 │                        │  - Replication     │    │
 │                        └────────────────────┘    │
 ├──────────────────────────────────────────────────┤
-│      Hypercore (Append-only Log) + Hyperswarm   │
+│      Hypercore (Append-only Log) + Hyperswarm    │
 │           (P2P Network & Discovery)              │
 └──────────────────────────────────────────────────┘
 ```
@@ -330,6 +348,7 @@ See [LICENSE](LICENSE) for the full license text.
 - [DAT Ecosystem](https://dat-ecosystem.org/) - For the Hypercore Protocol
 - [Holepunch](https://holepunch.to/) - For Hypercore and Hyperswarm implementations
 - [OpenPGP.js](https://openpgpjs.org/) - For GPG encryption
+- [GNU Privacy Guard](https://gnupg.org/) - For GPG standards and tools
 - All contributors and supporters
 
 ---

@@ -127,29 +127,49 @@ export class FeedManager {
    * Follow a user by their public key
    */
   async followUser(publicKeyHex, username = null) {
-    if (this.followedFeeds.has(publicKeyHex)) {
+    // Validate feed key format (must be 64 hex chars = 32 bytes)
+    if (!publicKeyHex || typeof publicKeyHex !== 'string') {
+      throw new Error('Feed key must be a hex string');
+    }
+    
+    const cleanHex = publicKeyHex.replace(/\s+/g, '').toLowerCase();
+    
+    if (cleanHex.length !== 64) {
+      throw new Error(
+        `Invalid feed key length. Expected 64 hex characters (32 bytes), got ${cleanHex.length}.\n` +
+        `Feed keys look like: dcba522ef06b93ccec0fc5d9e84189038475b8f94018ef92010756e329482faa\n` +
+        `GPG fingerprints are different and cannot be used to follow users.\n` +
+        `Use /mykey in the other user's client to get their feed discovery key.`
+      );
+    }
+    
+    if (!/^[0-9a-f]+$/.test(cleanHex)) {
+      throw new Error('Feed key must contain only hexadecimal characters (0-9, a-f)');
+    }
+    
+    if (this.followedFeeds.has(cleanHex)) {
       // Update username if provided
       if (username) {
-        this.usernames.set(publicKeyHex, username);
-        console.log(`Updated username to "${username}" for ${publicKeyHex.slice(0, 16)}...`);
+        this.usernames.set(cleanHex, username);
+        console.log(`Updated username to "${username}" for ${cleanHex.slice(0, 16)}...`);
       } else {
         console.log('Already following this user');
       }
-      return this.followedFeeds.get(publicKeyHex);
+      return this.followedFeeds.get(cleanHex);
     }
 
-    const publicKey = b4a.from(publicKeyHex, 'hex');
-    const feed = new Hypercore(`${this.storage}/follows/${publicKeyHex}`, publicKey);
+    const publicKey = b4a.from(cleanHex, 'hex');
+    const feed = new Hypercore(`${this.storage}/follows/${cleanHex}`, publicKey);
     
     await feed.ready();
-    this.followedFeeds.set(publicKeyHex, feed);
+    this.followedFeeds.set(cleanHex, feed);
     
     // Store username if provided
     if (username) {
-      this.usernames.set(publicKeyHex, username);
-      console.log(`Now following: "${username}" (${publicKeyHex.slice(0, 16)}...)`);
+      this.usernames.set(cleanHex, username);
+      console.log(`Now following: "${username}" (${cleanHex.slice(0, 16)}...)`);
     } else {
-      console.log(`Now following: ${publicKeyHex.slice(0, 16)}...`);
+      console.log(`Now following: ${cleanHex.slice(0, 16)}...`);
     }
     
     return feed;
@@ -212,10 +232,11 @@ export class FeedManager {
           });
         } else if (message.type === 'encrypted') {
           // Try to decrypt if it's for us
-          const myFingerprint = this.crypto.getFingerprint();
+          const myFeedKeyHex = b4a.toString(this.ownFeed.key, 'hex');
           const senderPubKey = this.publicKeys.get(feedKeyHex);
           
-          if (message.recipient === feedKeyHex || !message.recipient) {
+          // Check if this message is for us
+          if (message.recipient === myFeedKeyHex || !message.recipient) {
             // This is for us, try to decrypt
             if (senderPubKey) {
               try {
@@ -236,6 +257,7 @@ export class FeedManager {
               }
             }
           }
+          // If message is not for us, we skip it (don't add to messages array)
         } else if (message.type === 'signed') {
           // Verify signature
           const senderPubKey = this.publicKeys.get(feedKeyHex);

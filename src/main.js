@@ -153,7 +153,10 @@ class Hyperchat {
             const username = args[1] || null;
             await this.followUser(args[0], username);
           } else {
-            console.log('Usage: /follow <public-key> [username]');
+            console.log('Usage: /follow <feed-key> [username]');
+            console.log('\nExample: /follow dcba522ef06b93ccec0fc5d9e841890... bob');
+            console.log('\nNote: Use the feed discovery key (64 hex chars), not the GPG fingerprint.');
+            console.log('      The other user can share their key with: /mykey');
           }
           break;
           

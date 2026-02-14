@@ -44,15 +44,17 @@ test('Integration - Two users connect and replicate', async () => {
       return aliceFeed && aliceFeed.length > 0;
     }, 10000);
     
-    // Verify Bob received Alice's message
+    // Verify Bob received Alice's messages (key_announcement + message)
     const aliceFeed = feedManager2.followedFeeds.get(aliceKey);
     assert.ok(aliceFeed, 'Bob should have Alice\'s feed');
-    assert.equal(aliceFeed.length, 1, 'Alice\'s feed should have 1 message');
+    assert.equal(aliceFeed.length, 2, 'Alice\'s feed should have 2 messages (key_announcement + message)');
     
     const messages = await feedManager2.getFeedMessages(aliceFeed);
-    assert.equal(messages.length, 1);
-    assert.equal(messages[0].content, 'Hello from Alice!');
-    assert.equal(messages[0].author, 'alice');
+    assert.equal(messages.length, 2);
+    // First message is key_announcement, second is the actual message
+    assert.equal(messages[0].type, 'key_announcement');
+    assert.equal(messages[1].content, 'Hello from Alice!');
+    assert.equal(messages[1].author, 'alice');
     
     console.log('✓ Two users connected and replicated successfully');
   } finally {
@@ -91,14 +93,15 @@ test('Integration - Real-time message propagation', async () => {
     // Wait for real-time replication
     await waitFor(async () => {
       const aliceFeed = feedManager2.followedFeeds.get(aliceKey);
-      return aliceFeed && aliceFeed.length > 0;
+      return aliceFeed && aliceFeed.length > 1;
     }, 10000);
     
     const aliceFeed = feedManager2.followedFeeds.get(aliceKey);
     const messages = await feedManager2.getFeedMessages(aliceFeed);
     
-    assert.equal(messages.length, 1);
-    assert.equal(messages[0].content, 'Real-time message!');
+    assert.equal(messages.length, 2, 'Should have key_announcement + message');
+    assert.equal(messages[0].type, 'key_announcement');
+    assert.equal(messages[1].content, 'Real-time message!');
     
     console.log('✓ Real-time message propagation works');
   } finally {
@@ -153,8 +156,8 @@ test('Integration - Three-way feed replication', async () => {
     // Verify Charlie has messages from both
     const timeline = await feedManager3.getTimeline();
     
-    // Charlie's own message + Alice's + Bob's = 3 total
-    assert.equal(timeline.length, 3, 'Timeline should have 3 messages');
+    // Charlie's own (key_announcement + message) + Alice's (key_announcement + message) + Bob's (key_announcement + message) = 6 total
+    assert.equal(timeline.length, 6, 'Timeline should have 6 messages (3 key_announcements + 3 messages)');
     
     const contents = timeline.map(m => m.content);
     assert.ok(contents.includes('Hello from Alice'));
@@ -199,16 +202,22 @@ test('Integration - Message types preservation', async () => {
     
     await waitFor(async () => {
       const aliceFeed = feedManager2.followedFeeds.get(aliceKey);
-      return aliceFeed && aliceFeed.length === 3;
+      return aliceFeed && aliceFeed.length === 4;
     }, 10000);
     
     const aliceFeed = feedManager2.followedFeeds.get(aliceKey);
     const messages = await feedManager2.getFeedMessages(aliceFeed);
     
-    assert.equal(messages.length, 3);
-    assert.equal(messages[0].type, 'message');
-    assert.equal(messages[1].type, 'status');
-    assert.equal(messages[2].type, 'microblog');
+    assert.equal(messages.length, 4, 'Should have key_announcement + 3 messages');
+    assert.equal(messages[0].type, 'key_announcement');
+    // After verification, signed messages are unpacked to their original types
+    assert.equal(messages[1].type, 'message');
+    assert.equal(messages[2].type, 'status');
+    assert.equal(messages[3].type, 'microblog');
+    // Verify they were signed and verified
+    assert.equal(messages[1].signed, true);
+    assert.equal(messages[2].signed, true);
+    assert.equal(messages[3].signed, true);
     
     console.log('✓ Message types preserved during replication');
   } finally {
@@ -233,7 +242,7 @@ test('Integration - Offline then online sync', async () => {
     await feedManager1.appendMessage('message', 'Offline message 1');
     await feedManager1.appendMessage('message', 'Offline message 2');
     
-    assert.equal(feedManager1.ownFeed.length, 2);
+    assert.equal(feedManager1.ownFeed.length, 3, 'Should have key_announcement + 2 messages');
     
     // Now start network and connect
     networkManager1 = new NetworkManager(feedManager1);
@@ -248,15 +257,16 @@ test('Integration - Offline then online sync', async () => {
     // Wait for sync of offline messages
     await waitFor(async () => {
       const aliceFeed = feedManager2.followedFeeds.get(aliceKey);
-      return aliceFeed && aliceFeed.length === 2;
+      return aliceFeed && aliceFeed.length === 3;
     }, 10000);
     
     const aliceFeed = feedManager2.followedFeeds.get(aliceKey);
     const messages = await feedManager2.getFeedMessages(aliceFeed);
     
-    assert.equal(messages.length, 2);
-    assert.equal(messages[0].content, 'Offline message 1');
-    assert.equal(messages[1].content, 'Offline message 2');
+    assert.equal(messages.length, 3, 'Should have key_announcement + 2 offline messages');
+    assert.equal(messages[0].type, 'key_announcement');
+    assert.equal(messages[1].content, 'Offline message 1');
+    assert.equal(messages[2].content, 'Offline message 2');
     
     console.log('✓ Offline messages synced when coming online');
   } finally {
