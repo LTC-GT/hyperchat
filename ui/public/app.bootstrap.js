@@ -722,23 +722,34 @@ function handleServerMessage (msg) {
       break
 
     case 'room-created':
-      addRoom(msg.roomKey, msg.link)
+      addRoom(msg.roomKey, msg.link, { writable: msg.writable })
       applyPendingCreatedRoomProfile(msg.roomKey)
       selectRoom(msg.roomKey)
       requestRoomHistory(msg.roomKey, { count: 100 })
       break
 
     case 'room-joined':
-      addRoom(msg.roomKey, msg.link)
+      addRoom(msg.roomKey, msg.link, { writable: msg.writable })
       selectRoom(msg.roomKey)
       requestRoomHistory(msg.roomKey, { count: 100 })
       break
 
     case 'room-info':
-      addRoom(msg.roomKey, msg.link)
+      addRoom(msg.roomKey, msg.link, { writable: msg.writable })
       send({ type: 'watch-room', roomKey: msg.roomKey })
       requestRoomHistory(msg.roomKey, { count: 100 })
       break
+
+    case 'room-permission': {
+      const room = state.rooms.get(msg.roomKey)
+      if (room && typeof msg.writable === 'boolean') {
+        room.writable = msg.writable
+        if (state.activeRoom === msg.roomKey && typeof updateComposerAccess === 'function') {
+          updateComposerAccess()
+        }
+      }
+      break
+    }
 
     case 'room-deleted':
       removeRoomLocal(msg.roomKey, { navigateHome: state.activeRoom === msg.roomKey })

@@ -390,7 +390,8 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify({
             type: 'room-created',
             roomKey: keyHex,
-            link: room.inviteLink
+            link: room.inviteLink,
+            writable: room.writable
           }))
 
           // Start watching for messages
@@ -450,7 +451,8 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify({
             type: 'room-joined',
             roomKey: keyHex,
-            link: room.inviteLink
+            link: room.inviteLink,
+            writable: room.writable
           }))
 
           // Request to be added as writer
@@ -467,6 +469,12 @@ wss.on('connection', (ws) => {
             const joinMsg = systemMsg('join', { name: identity.name }, identity)
             await room.append(joinMsg)
           } catch {}
+
+          ws.send(JSON.stringify({
+            type: 'room-permission',
+            roomKey: keyHex,
+            writable: room.writable
+          }))
 
           startWatching(room, keyHex, ws)
           break
@@ -1142,7 +1150,24 @@ wss.on('connection', (ws) => {
         }
       }
     } catch (err) {
-      ws.send(JSON.stringify({ type: 'error', message: err.message }))
+      const rawMessage = String(err?.message || 'Server error')
+      if (rawMessage === 'Not writable') {
+        const roomKey = msg?.roomKey ? String(msg.roomKey) : null
+        const room = roomKey ? neet.rooms.get(roomKey) : null
+        ws.send(JSON.stringify({
+          type: 'room-permission',
+          roomKey,
+          writable: room ? Boolean(room.writable) : false
+        }))
+        ws.send(JSON.stringify({
+          type: 'error',
+          code: 'room-not-writable',
+          roomKey,
+          message: 'This room is read-only on this device. Ask a current room writer to grant write access before sending messages.'
+        }))
+      } else {
+        ws.send(JSON.stringify({ type: 'error', message: rawMessage }))
+      }
     }
   })
 

@@ -9,15 +9,25 @@ function pickDefaultRoomEmoji (seed = '') {
   return ROOM_ICON_FALLBACKS[hash % ROOM_ICON_FALLBACKS.length]
 }
 
-function addRoom (keyHex, link) {
-  if (state.rooms.has(keyHex)) return
+function addRoom (keyHex, link, opts = {}) {
+  const writable = typeof opts.writable === 'boolean' ? opts.writable : true
+
+  if (state.rooms.has(keyHex)) {
+    const room = state.rooms.get(keyHex)
+    if (link) room.link = link
+    if (typeof opts.writable === 'boolean') room.writable = opts.writable
+    renderServerList()
+    if (state.activeRoom === keyHex) updateComposerAccess()
+    return
+  }
 
   const roomName = `Room ${state.rooms.size + 1}`
   state.rooms.set(keyHex, {
     link,
     name: roomName,
     iconEmoji: pickDefaultRoomEmoji(keyHex),
-    iconImage: null
+    iconImage: null,
+    writable
   })
   state.messagesByRoom.set(keyHex, state.messagesByRoom.get(keyHex) || [])
   state.seenSeqByRoom.set(keyHex, state.seenSeqByRoom.get(keyHex) || new Set())
@@ -417,6 +427,11 @@ dom.messagesScroll?.addEventListener('scroll', () => {
 function sendMessage () {
   const text = dom.messageInput.value.trim()
   if (!text || !state.activeRoom) return
+  const room = state.rooms.get(state.activeRoom)
+  if (room?.writable === false) {
+    appAlert('This room is read-only for this identity. Ask an existing writer to grant write access first.', { title: 'Read-only room' })
+    return
+  }
 
   const dmParticipants = getActiveDmParticipants()
 
@@ -1182,17 +1197,20 @@ function getChannelById (roomKey, kind, id) {
 
 function updateComposerAccess () {
   if (!state.activeRoom) return
+  const room = state.rooms.get(state.activeRoom)
   const textId = state.activeTextChannelByRoom.get(state.activeRoom) || 'general'
   const channel = getChannelById(state.activeRoom, 'text', textId)
+  const blockedByReadOnly = room?.writable === false
   const blockedByRole = Boolean(channel?.modOnly) && !isCurrentUserAdmin()
   const blockedByBan = isCurrentUserBannedFromRoom(state.activeRoom)
   const blockedByServerKick = isCurrentUserKickedFromServer(state.activeRoom)
   const blockedByKick = isCurrentUserKickedFromChannel(state.activeRoom, textId)
-  const blocked = blockedByRole || blockedByBan || blockedByKick
+  const blocked = blockedByReadOnly || blockedByRole || blockedByBan || blockedByServerKick || blockedByKick
   dom.messageInput.disabled = blocked
   dom.btnAttachFile.disabled = blocked
   dom.btnEmoji.disabled = blocked
-  if (blockedByBan) dom.messageInput.placeholder = 'You are banned from this room'
+  if (blockedByReadOnly) dom.messageInput.placeholder = 'Read-only room (writer access required)'
+  else if (blockedByBan) dom.messageInput.placeholder = 'You are banned from this room'
   else if (blockedByServerKick) dom.messageInput.placeholder = 'You were kicked from this server'
   else if (blockedByKick) dom.messageInput.placeholder = 'You were kicked from this channel'
   else if (blockedByRole) dom.messageInput.placeholder = 'Moderator/Admin only channel'
