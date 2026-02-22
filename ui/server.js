@@ -111,24 +111,35 @@ const { neet, storageDir } = await initNeet(identity)
 async function initNeet (identity) {
   const preferredStorage = process.env.NEET_UI_STORAGE || join(identity.dir, 'storage-ui')
 
-  try {
-    const neet = new Neet({ storage: preferredStorage, identity })
-    await neet.ready()
-    return { neet, storageDir: preferredStorage }
-  } catch (err) {
-    if (!String(err?.message || '').includes('File descriptor could not be locked')) {
-      throw err
+  const maxAttempts = 8
+  const retryDelayMs = 500
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const neet = new Neet({ storage: preferredStorage, identity })
+      await neet.ready()
+      return { neet, storageDir: preferredStorage }
+    } catch (err) {
+      const message = String(err?.message || '')
+      const lockBusy = message.includes('File descriptor could not be locked')
+      if (!lockBusy) throw err
+
+      if (attempt < maxAttempts) {
+        console.warn(`⚠️  Corestore storage lock busy at ${preferredStorage}; retrying (${attempt}/${maxAttempts})…`)
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs))
+        continue
+      }
+
+      throw new Error([
+        `Corestore path is locked: ${preferredStorage}`,
+        'Another Neet process is likely still running.',
+        'Close the other process (or wait for it to fully exit) and run pnpm dev again.',
+        'To use a different persistent storage path, set NEET_UI_STORAGE=/path/to/storage pnpm dev.'
+      ].join(' '))
     }
-
-    const fallbackStorage = join(os.tmpdir(), `neet-ui-${process.pid}`)
-    console.warn('⚠️  Corestore storage lock busy; using temporary UI storage for this run.')
-    console.warn(`   Preferred: ${preferredStorage}`)
-    console.warn(`   Fallback:  ${fallbackStorage}`)
-
-    const neet = new Neet({ storage: fallbackStorage, identity })
-    await neet.ready()
-    return { neet, storageDir: fallbackStorage }
   }
+
+  throw new Error('Failed to initialize persistent Corestore storage.')
 }
 
 // Track watchers for cleanup
@@ -140,11 +151,93 @@ const videoSessions = new Map() // sessionId -> { roomKey, channels:Set, sockets
 
 // ─── Profile persistence (avatar, name stored alongside identity) ───
 const { profilePath, loadProfile, saveProfile } = createProfileStore(identity)
+const roomsPath = join(identity.dir, 'rooms.json')
 
 function normalizePresenceStatus (value) {
   const status = String(value || 'online')
   return ['online', 'idle', 'dnd', 'invisible', 'offline'].includes(status) ? status : 'online'
 }
+
+function loadPersistedRooms () {
+  try {
+    if (!existsSync(roomsPath)) return []
+    const parsed = JSON.parse(readFileSync(roomsPath, 'utf-8'))
+    const rooms = Array.isArray(parsed?.rooms) ? parsed.rooms : []
+    return rooms
+      .map((entry) => ({
+        roomKey: String(entry?.roomKey || '').trim(),
+        link: String(entry?.link || '').trim(),
+        addedAt: Number(entry?.addedAt) || Date.now()
+      }))
+      .filter((entry) => entry.roomKey && entry.link)
+  } catch {
+    return []
+  }
+}
+
+function savePersistedRooms (rooms) {
+  const clean = []
+  const seen = new Set()
+  for (const entry of rooms) {
+    const roomKey = String(entry?.roomKey || '').trim()
+    const link = String(entry?.link || '').trim()
+    if (!roomKey || !link) continue
+    const dedupeKey = `${roomKey}:${link}`
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+    clean.push({ roomKey, link, addedAt: Number(entry?.addedAt) || Date.now() })
+  }
+
+  writeFileSync(roomsPath, JSON.stringify({ rooms: clean }, null, 2))
+}
+
+function persistRoom (roomKey, link) {
+  const key = String(roomKey || '').trim()
+  const invite = String(link || '').trim()
+  if (!key || !invite) return
+
+  const rooms = loadPersistedRooms()
+  const idx = rooms.findIndex((entry) => entry.roomKey === key || entry.link === invite)
+  if (idx >= 0) {
+    rooms[idx] = { ...rooms[idx], roomKey: key, link: invite, addedAt: rooms[idx].addedAt || Date.now() }
+  } else {
+    rooms.push({ roomKey: key, link: invite, addedAt: Date.now() })
+  }
+  savePersistedRooms(rooms)
+}
+
+function unpersistRoom (roomKey, link = null) {
+  const key = String(roomKey || '').trim()
+  const invite = String(link || '').trim()
+  if (!key && !invite) return
+
+  const rooms = loadPersistedRooms().filter((entry) => {
+    if (key && entry.roomKey === key) return false
+    if (invite && entry.link === invite) return false
+    return true
+  })
+  savePersistedRooms(rooms)
+}
+
+async function restorePersistedRooms () {
+  const persisted = loadPersistedRooms()
+  if (persisted.length === 0) return
+
+  const restored = []
+  for (const entry of persisted) {
+    try {
+      const room = await neet.joinRoom(entry.link)
+      const roomKey = b4a.toString(room.key, 'hex')
+      restored.push({ roomKey, link: room.inviteLink, addedAt: entry.addedAt || Date.now() })
+    } catch (err) {
+      console.warn(`Skipping persisted room ${entry.roomKey}: ${err.message}`)
+    }
+  }
+
+  savePersistedRooms(restored)
+}
+
+await restorePersistedRooms()
 
 // ─── WebSocket server ───
 const wss = new WebSocketServer({ server: httpServer })
@@ -237,6 +330,7 @@ wss.on('connection', (ws) => {
         case 'create-room': {
           const room = await neet.createRoom()
           const keyHex = b4a.toString(room.key, 'hex')
+          persistRoom(keyHex, room.inviteLink)
 
           const roomProfileMsg = systemMsg('room-profile-set', {
             emoji: randomRoomIconEmoji(),
@@ -332,6 +426,7 @@ wss.on('connection', (ws) => {
         case 'join-room': {
           const room = await neet.joinRoom(msg.link)
           const keyHex = b4a.toString(room.key, 'hex')
+          persistRoom(keyHex, room.inviteLink)
 
           ws.send(JSON.stringify({
             type: 'room-joined',
@@ -1012,6 +1107,9 @@ wss.on('connection', (ws) => {
               const leaveMsg = systemMsg('leave', { name: identity.name }, identity)
               await room.append(leaveMsg)
             } catch {}
+            unpersistRoom(msg.roomKey, room.inviteLink)
+          } else {
+            unpersistRoom(msg.roomKey)
           }
           await neet.leaveRoom(msg.roomKey)
           stopWatching(msg.roomKey, ws)

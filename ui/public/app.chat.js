@@ -1199,6 +1199,38 @@ function updateComposerAccess () {
   else dom.messageInput.placeholder = `Message #${channel?.name || 'general'}`
 }
 
+function getVoiceChannelParticipants (channelId) {
+  if (!state.activeRoom || !channelId || !state.activeCall) return []
+  if (state.activeCall.roomKey !== state.activeRoom || state.activeCall.channelId !== channelId) return []
+
+  const participants = new Map()
+  const selfKey = state.identity?.publicKey
+  if (selfKey) {
+    participants.set(selfKey, {
+      name: state.profile.fullName || state.profile.username || 'You',
+      avatar: state.profile.avatar || null,
+      isSelf: true
+    })
+  }
+
+  const roomMsgs = state.messagesByRoom.get(state.activeRoom) || []
+  for (const msg of roomMsgs) {
+    if (msg?.type !== 'system') continue
+    if (msg.action !== 'call-start' && msg.action !== 'call-join') continue
+    if (msg.data?.channelId !== channelId) continue
+    if (msg.data?.callId !== state.activeCall.id) continue
+    if (!msg.sender) continue
+
+    participants.set(msg.sender, {
+      name: msg.senderName || msg.sender.slice(0, 8),
+      avatar: msg.senderAvatar || null,
+      isSelf: msg.sender === selfKey
+    })
+  }
+
+  return [...participants.entries()].map(([key, meta]) => ({ key, ...meta }))
+}
+
 function renderChannelLists () {
   if (!state.activeRoom) return
 
@@ -1235,14 +1267,36 @@ function renderChannelLists () {
   for (const channel of channels.voice) {
     const row = document.createElement('div')
     const isActive = channel.id === activeVoice
+    const isConnectedHere = Boolean(
+      state.activeCall &&
+      state.activeCall.roomKey === state.activeRoom &&
+      state.activeCall.channelId === channel.id
+    )
+    const participants = getVoiceChannelParticipants(channel.id)
     const blockedVoice = isCurrentUserBannedFromRoom(state.activeRoom) || isCurrentUserKickedFromChannel(state.activeRoom, channel.id)
-    row.className = `w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-left text-sm ${isActive ? 'bg-discord-active text-discord-text' : 'text-discord-text-s hover:text-discord-text hover:bg-discord-hover'}`
+    row.className = `w-full rounded text-left text-sm ${isActive ? 'bg-discord-active text-discord-text' : 'text-discord-text-s hover:text-discord-text hover:bg-discord-hover'}`
+    const participantsHtml = participants.length
+      ? `<div class="px-2 pb-1.5 space-y-1">${participants.map((participant) => {
+          const avatar = participant.avatar
+            ? `<img src="${esc(participant.avatar)}" class="w-full h-full object-cover">`
+            : getDefaultAvatar(participant.name)
+          return `
+            <div class="flex items-center gap-2 pl-6 text-xs text-discord-text-s">
+              <div class="w-5 h-5 rounded-full bg-discord-blurple flex items-center justify-center text-[10px] font-bold overflow-hidden">${avatar}</div>
+              <span class="truncate">${esc(participant.name)}${participant.isSelf ? ' (You)' : ''}</span>
+            </div>
+          `
+        }).join('')}</div>`
+      : ''
     row.innerHTML = `
-      <button class="voice-select flex items-center gap-1.5 flex-1 text-left">
-        <span class="text-discord-text-m">🔊</span><span>${esc(channel.name)}</span>
-      </button>
-      ${channel.modOnly ? '<span class="text-[10px]">🔒</span>' : ''}
-      <button class="voice-join px-2 py-0.5 text-[11px] rounded ${blockedVoice ? 'bg-discord-active text-discord-text-m' : 'bg-discord-blurple text-white'}" ${blockedVoice ? 'disabled' : ''}>Join</button>
+      <div class="flex items-center gap-1.5 px-2 py-1.5">
+        <button class="voice-select flex items-center gap-1.5 flex-1 text-left">
+          <span class="text-discord-text-m">🔊</span><span>${esc(channel.name)}</span>
+        </button>
+        ${channel.modOnly ? '<span class="text-[10px]">🔒</span>' : ''}
+        <button class="voice-join px-2 py-0.5 text-[11px] rounded ${blockedVoice ? 'bg-discord-active text-discord-text-m' : isConnectedHere ? 'bg-discord-green text-white' : 'bg-discord-blurple text-white'}" ${blockedVoice || isConnectedHere ? 'disabled' : ''}>${isConnectedHere ? 'Joined' : 'Join'}</button>
+      </div>
+      ${participantsHtml}
     `
 
     const selectBtn = row.querySelector('.voice-select')
@@ -1254,8 +1308,9 @@ function renderChannelLists () {
     })
 
     joinBtn.addEventListener('click', async () => {
+      if (isConnectedHere) return
       state.activeVoiceChannelByRoom.set(state.activeRoom, channel.id)
-      await startCall('voice')
+      await startCall('voice', { inlineChannelUi: true })
       renderChannelLists()
     })
 

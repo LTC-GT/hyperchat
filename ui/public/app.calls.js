@@ -1,4 +1,4 @@
-async function startCall (mode) {
+async function startCall (mode, options = {}) {
   if (!state.activeRoom) return
   if (state.activeCall) await endCall(true)
 
@@ -14,10 +14,16 @@ async function startCall (mode) {
   state.activeCall = { id: callId, mode, roomKey: state.activeRoom, channelId }
   state.localCallStream = stream
 
-  showCallStage(mode)
-  attachLocalStream(stream)
+  const inlineChannelUi = Boolean(options.inlineChannelUi) && mode === 'voice'
+  if (inlineChannelUi) {
+    showInlineVoiceCallControls()
+  } else {
+    showCallStage(mode)
+    attachLocalStream(stream)
+  }
   applyLocalMediaTrackState()
   applyCallBitrate(Number(dom.callBitrate?.value || 48000))
+  if (typeof renderChannelLists === 'function') renderChannelLists()
 
   send({ type: 'start-call', roomKey: state.activeRoom, channelId, callId, mode })
 }
@@ -79,7 +85,7 @@ async function onIncomingCallStart (msg, roomKey) {
   joinCall(callId, mode, channelId)
 }
 
-async function joinCall (callId, mode, channelId) {
+async function joinCall (callId, mode, channelId, options = {}) {
   stopRingtoneLoop()
   const stream = await requestCallMedia(mode)
   if (!stream || !state.activeRoom) return
@@ -88,10 +94,16 @@ async function joinCall (callId, mode, channelId) {
   state.localCallStream = stream
   state.activeVoiceChannelByRoom.set(state.activeRoom, channelId)
 
-  showCallStage(mode)
-  attachLocalStream(stream)
+  const inlineChannelUi = Boolean(options.inlineChannelUi) && mode === 'voice'
+  if (inlineChannelUi) {
+    showInlineVoiceCallControls()
+  } else {
+    showCallStage(mode)
+    attachLocalStream(stream)
+  }
   applyLocalMediaTrackState()
   applyCallBitrate(Number(dom.callBitrate?.value || 48000))
+  if (typeof renderChannelLists === 'function') renderChannelLists()
 
   send({ type: 'join-call', roomKey: state.activeRoom, channelId, callId, mode })
 }
@@ -237,6 +249,16 @@ async function endCall (notifyRemote) {
   state.localCallStream = null
   state.activeCall = null
   hideCallStage()
+  if (typeof renderChannelLists === 'function') renderChannelLists()
+}
+
+function showInlineVoiceCallControls () {
+  dom.callStage?.classList.add('hidden')
+  dom.btnEndCall?.classList.remove('hidden')
+  if (dom.callStatus) dom.callStatus.textContent = 'Voice call active'
+
+  dom.btnVoice.classList.add('text-discord-green')
+  dom.btnVideoCall.classList.remove('text-discord-green')
 }
 
 function showCallStage (mode) {

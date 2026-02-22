@@ -164,6 +164,7 @@ const dom = {
   btnPreviewNotificationTone: $('#btnPreviewNotificationTone'),
   btnPreviewRingtone: $('#btnPreviewRingtone'),
   settingsP2PStatus: $('#settingsP2PStatus'),
+  settingsP2PExplain: $('#settingsP2PExplain'),
   btnRetestP2P: $('#btnRetestP2P'),
   btnResetLocalDB: $('#btnResetLocalDB'),
 
@@ -1118,16 +1119,37 @@ function hydrateSettingsModal () {
 
 function getP2PNetworkStatusText () {
   const label = state.p2pNetworkTest.summary || ''
-  if (state.p2pNetworkTest.status === 'testing') return '🟡 Testing whether your network is P2P friendly…'
-  if (state.p2pNetworkTest.status === 'friendly') return `🟢 P2P friendly: ${label || 'public route found'}`
-  if (state.p2pNetworkTest.status === 'unfriendly') return `🔴 Not P2P friendly: ${label || 'only local ICE routes found'}`
-  if (state.p2pNetworkTest.status === 'error') return `🔴 Could not run P2P test: ${label || 'WebRTC is unavailable'}`
-  return '🟡 P2P test not run yet'
+  if (state.p2pNetworkTest.status === 'testing') return '🟡 Checking your connection for direct peer-to-peer paths…'
+  if (state.p2pNetworkTest.status === 'friendly') return `🟢 Good news: direct P2P should work (${label || 'public route found'})`
+  if (state.p2pNetworkTest.status === 'unfriendly') return `🔴 Direct P2P may be limited (${label || 'only local ICE routes found'})`
+  if (state.p2pNetworkTest.status === 'error') return `🔴 We could not complete the network check (${label || 'WebRTC is unavailable'})`
+  return '🟡 Network test not run yet'
+}
+
+function getP2PNetworkExplanationText () {
+  if (state.p2pNetworkTest.status === 'testing') {
+    return 'This test checks whether your device can connect directly to other peers on the internet.'
+  }
+
+  if (state.p2pNetworkTest.status === 'friendly') {
+    return 'Your network looks P2P-friendly, so HyperSwarm can usually establish direct peer connections quickly.'
+  }
+
+  if (state.p2pNetworkTest.status === 'unfriendly') {
+    return 'Your router/firewall is likely strict. HyperSwarm will still try DHT discovery + NAT hole-punching, keep retrying peers, and connect where possible (often same-LAN or more open peers).'
+  }
+
+  if (state.p2pNetworkTest.status === 'error') {
+    return 'The test could not run in this environment. HyperSwarm still attempts normal peer discovery and connection setup in the background.'
+  }
+
+  return 'Run the test to estimate how easily your device can form direct peer-to-peer links.'
 }
 
 function renderP2PNetworkStatus () {
   if (!dom.settingsP2PStatus) return
   dom.settingsP2PStatus.textContent = getP2PNetworkStatusText()
+  if (dom.settingsP2PExplain) dom.settingsP2PExplain.textContent = getP2PNetworkExplanationText()
   if (dom.btnRetestP2P) {
     const testing = state.p2pNetworkTest.status === 'testing'
     dom.btnRetestP2P.disabled = testing

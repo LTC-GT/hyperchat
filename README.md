@@ -51,7 +51,7 @@ pnpm run watch:css
 
 Notes:
 
-- If you see `File descriptor could not be locked`, another process may be using the same Corestore path. The Web UI now auto-falls back to a temporary storage directory for that run.
+- If you see `File descriptor could not be locked`, another process is likely still using the same Corestore path. The Web UI now retries briefly, then exits with a clear error instead of switching to temporary storage (to prevent rooms from appearing to disappear across restarts).
 - You can set your own UI storage path with `NEET_UI_STORAGE=/path/to/storage pnpm dev`.
 - Prefer Node LTS (18/20/22). Very new Node versions may be unstable with native storage dependencies.
 - Tailwind is built locally with **Tailwind v4 CLI** (`@tailwindcss/cli`), not via CDN.
