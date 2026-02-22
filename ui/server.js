@@ -455,15 +455,6 @@ wss.on('connection', (ws) => {
             writable: room.writable
           }))
 
-          // Request to be added as writer
-          try {
-            const writerMsg = systemMsg('add-writer', {
-              key: b4a.toString(room.base.local.key, 'hex'),
-              name: identity.name
-            }, identity)
-            await room.append(writerMsg)
-          } catch {}
-
           // Announce join
           try {
             const joinMsg = systemMsg('join', { name: identity.name }, identity)
@@ -1240,6 +1231,16 @@ function startWatching (room, keyHex, ws) {
       if (msg.action === 'end') {
         closeVideoSession(msg.sessionId)
       }
+    }
+
+    if (msg?.type === 'system' && msg?.action === 'add-writer') {
+      try {
+        ws.send(JSON.stringify({
+          type: 'room-permission',
+          roomKey: keyHex,
+          writable: Boolean(room.writable)
+        }))
+      } catch {}
     }
 
     try {
