@@ -1,372 +1,151 @@
-# 🚀 Hyperchat
+# neet
 
-A decentralized P2P chat application with **end-to-end GPG encryption** built on the [DAT ecosystem](https://dat-ecosystem.org/) using Hypercore Protocol.
+Peer-to-peer CLI chat with text messaging, file sharing, and a voice-ready architecture — all running over Hyperswarm with no central server.
 
-> **Truly peer-to-peer**: No central servers, no accounts, no tracking. Just cryptographic keys and direct connections.
->
-> **🔒 End-to-end encrypted** with 4096-bit RSA GPG keys!
+Every room is an [Autobase](https://github.com/holepunchto/autobase) multi-writer log backed by [Corestore](https://github.com/holepunchto/corestore), so messages persist and can be delivered to peers who join later (offline delivery). Invite links use the `pear://neet/...` format.
 
-[![License: LGPL-3.0](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
-[![Encryption](https://img.shields.io/badge/encryption-4096--bit%20RSA-blue)](./ARCHITECTURE.md)
-[![Status](https://img.shields.io/badge/status-alpha-orange)]()
-[![Code Size](https://img.shields.io/badge/code-~1.4k%20lines-blue)]()
-[![Hyperchat CI](https://github.com/LTC-GT/hyperchat/actions/workflows/ci.yml/badge.svg)](https://github.com/LTC-GT/hyperchat/actions/workflows/ci.yml)
-
-## 📸 Screenshots
-![image](/.github/media/cliss.png)
-![image](/.github/media/webss.png)
-
-> [!TIP]
-> Start the web interface with `npm run web` and open http://localhost:3000 and you'll see active peers and messages replicating in real-time as you follow users and send messages from the CLI!
-
-## 🏗️ Project Status
-
-**⚠️ Alpha - Work in Progress**
-
-This project is in active development and considered **alpha** quality. While the core functionality works and is well-tested (83.95% code coverage), expect:
-- Breaking API changes
-- Bugs and edge cases  
-- Missing features from the roadmap
-- Documentation updates
-
-**Codebase Stats:**
-- ~1,374 lines of source code
-- ~2,339 lines of test code
-- 58 unit tests + 9 integration tests (all passing ✅)
-- Small, focused, and easy to audit
-
-## ✨ Features
-
-### 🔒 Security & Encryption
-
-- **4096-bit RSA GPG Encryption** - End-to-end encrypted direct messages
-- **Digital Signatures** - All messages cryptographically signed
-- **Signature Verification** - Automatic verification of message authenticity  
-- **Import Your Keys** - Use existing GPG keys or generate new ones
-- **Offline-Compatible** - Encrypted messages work even when sender is offline
-
-### 💬 Messaging
-
-- 📝 **Append-only logs** using Hypercore for:
-  - Chat messages (encrypted or signed)
-  - Status updates (signed)
-  - Micro-blog posts (signed, max 280 chars)
-- 🔐 **Per-user feeds**: Each user has their own cryptographically signed Hypercore feed
-- 👥 **Follow system**: Subscribe to other users by their feed keys
-- 💬 **Direct messaging**: Send encrypted messages to specific users by username
-- 🔗 **Peer notifications**: See when followed users connect
-- 🏷️ **Username mapping**: Assign memorable usernames to followed users
-
-### 🌐 Network & Discovery
-
-- 🌐 **P2P Discovery**: Automatic peer discovery using Hyperswarm (DHT + MDNS)
-- 💾 **Offline-first**: Works without central servers
-- ⚡ **Real-time replication**: Changes sync instantly to connected peers
-- 🔄 **Works across networks**: DHT-based discovery works globally
-
-## 🎯 Quick Start
-
-### Installation
+## Quick start
 
 ```bash
-npm install
+pnpm install
+
+# Create your identity (auto-generated on first run)
+node bin/neet.js name alice
+
+# Create a room and get the invite link
+node bin/neet.js create
+
+# On another terminal, join by link
+node bin/neet.js join pear://neet/aqxrtr6dpecgwqdbaq9x7w3p4hk3xqpyoh7gkbgmcn574y7yymro
 ```
 
-### Start Chatting (CLI)
+## Web UI
+
+Run from the project root (the folder that contains `package.json`):
 
 ```bash
-# Start as Alice (GPG keys auto-generated)
-npm start alice
-# or
-npm run start alice
+pnpm install
+pnpm run build:css
+pnpm dev
 ```
 
-Or import your existing GPG keys:
+Then open `http://localhost:3000`.
+
+For live UI styling during development:
 
 ```bash
-npm start alice --private-key ./my-private.asc --public-key ./my-public.asc
+pnpm run watch:css
 ```
 
-In the application:
-```bash
-# Share your GPG fingerprint (your identity)
-/mygpg
+### Web UI features
 
-# Share your feed key (for others to follow you)
-/mykey
+- Server list with multiple rooms
+- Text + voice channels with `+` create buttons
+- File upload/download in channel chat
+- Unicode emoji picker + custom server emojis
+- **Server Admin** page (gear icon) for:
+  - managing custom emojis
+  - setting room admins by public key
+- Admin-only emoji management controls
+- Voice, video, and screen-share calls from the header
 
-# Export your public GPG key to share
-/exportkey
+Notes:
 
-# Post a signed public message
-Hello, Hyperchat!
+- If you see `File descriptor could not be locked`, another process may be using the same Corestore path. The Web UI now auto-falls back to a temporary storage directory for that run.
+- You can set your own UI storage path with `NEET_UI_STORAGE=/path/to/storage pnpm dev`.
+- Prefer Node LTS (18/20/22). Very new Node versions may be unstable with native storage dependencies.
+- Tailwind is built locally with **Tailwind v4 CLI** (`@tailwindcss/cli`), not via CDN.
 
-# Post a status
-/status Building decentralized apps 🚀
+## Commands
 
-# Follow someone with a username (use their feed key)
-/follow fc4dfa31d14b3b6eefe6e0c7902143b5... bob
+| Command | Description |
+|---|---|
+| `neet create` | Create a new room, print its invite link |
+| `neet join <link>` | Join a room by `pear://neet/...` link or hex key |
+| `neet id` | Print your identity (public key + display name) |
+| `neet name <name>` | Set your display name |
 
-# Send an encrypted direct message to bob
-/message bob This message is encrypted end-to-end!
+### In-room commands
 
-# Post a microblog (≤280 chars)
-/blog Decentralization is the future!
+| Command | Description |
+|---|---|
+| `/send <path>` | Share a file (stored in a dedicated Hypercore) |
+| `/download <msgId> [dir]` | Download a shared file |
+| `/history [n]` | Show the last _n_ messages (default 30) |
+| `/peers` | List connected peers |
+| `/add-writer <hexKey>` | Grant write access to a peer |
+| `/info` | Room key, link, writer/indexer status |
+| `/quit` | Leave the room |
 
-# View your network statistics
-/stats
+Anything else typed at the prompt is sent as a text message.
 
-# Get help
-/help
-```
-
-### Web Interface
-
-```bash
-# Start the web server
-npm run web
-```
-
-Then open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌──────────────────────────────────────────────────┐
-│            Hyperchat Application                 │
-├──────────────────────────────────────────────────┤
+│                   neet node                      │
 │                                                  │
-│  ┌────────────────┐      ┌──────────────────┐    │
-│  │ CryptoManager  │◄────►│  FeedManager     │    │
-│  │ - GPG keys     │      │  - Own feed      │    │
-│  │ - Encryption   │      │  - Following     │    │
-│  │ - Signatures   │      │  - Timeline      │    │
-│  └────────────────┘      └─────────┬────────┘    │
-│                                    │             │
-│                        ┌───────────▼────────┐    │
-│                        │  NetworkManager    │    │
-│                        │  - Swarm conn.     │    │
-│                        │  - Replication     │    │
-│                        └────────────────────┘    │
-├──────────────────────────────────────────────────┤
-│      Hypercore (Append-only Log) + Hyperswarm    │
-│           (P2P Network & Discovery)              │
+│  Identity        Ed25519 keypair (~/.neet/)      │
+│  Corestore       Persistent Hypercore storage    │
+│  Hyperswarm      DHT-based peer discovery        │
+│                                                  │
+│  ┌──────────── Room (Autobase) ───────────────┐  │
+│  │  Writer cores  →  linearized view core     │  │
+│  │  apply: routes add-writer → host.addWriter │  │
+│  │         routes messages  → view.append     │  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
+│  File transfer   Dedicated Hypercore per file    │
+│  Voice (ready)   Protomux "neet-voice" channel   │
 └──────────────────────────────────────────────────┘
 ```
 
-Each user maintains their own encrypted Hypercore feed. When you follow someone, you replicate their feed and receive updates in real-time.
+### Key concepts
 
-**See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed technical documentation.**
+- **Rooms** — Each room is an Autobase whose bootstrap key is encoded as a `pear://neet/<z32>` invite link. Every writer is also an indexer so any peer can produce the linearized view.
+- **Messages** — JSON objects with a `type` field: `text`, `file`, `system`, `reaction`, `voice`. All carry a sender public key, display name, timestamp, and unique ID.
+- **Default encryption** — Room messages are encrypted by default with libsodium (`crypto_secretbox`) using a per-room key derived from the room key. `add-writer` control messages remain plaintext so Autobase membership updates still work.
+- **File sharing** — Files are split into 64 KiB blocks in a new Hypercore. A `file` message in the room references the core key; recipients replicate it via Corestore.
+- **Voice (architecture)** — Real-time audio is *not* routed through Autobase. Instead, a Protomux `neet-voice` channel is opened directly between peers on the Hyperswarm connection, carrying signaling (JSON), raw audio frames, and control messages.
+- **Offline delivery** — Because messages live in Hypercores replicated through Corestore, a peer joining later will catch up on the full view history.
+- **Paged sync (Git/Torrent-style)** — The Web UI fetches message history in pages by sequence cursor (`beforeSeq`) and loads older pages only when needed, so peers do not transmit an entire database file on each join.
 
-## 📦 Project Structure
+## Project layout
 
 ```
-hyperchat/
-├── src/                      # JavaScript implementation
-│   ├── main.js              # CLI application
-│   ├── feed-manager.js      # Feed management & encryption
-│   ├── crypto-manager.js    # GPG encryption & signatures
-│   ├── network-manager.js   # P2P networking
-│   ├── encoding.js          # Message serialization
-│   └── web-server.js        # Web UI server (demo)
-├── test/                    # Test suite
-│   └── crypto.test.js       # GPG encryption tests
-├── web/                     # Web interface (demo)
-│   ├── index.html
-│   ├── styles.css
-│   └── app.js
-├── rust/                    # Rust implementation (stub)
-│   └── src/                 # See note below
-├── storage/                 # Local feed storage (auto-created)
-├── ARCHITECTURE.md          # Technical documentation
-└── README.md                # This file
+bin/neet.js           CLI entry point
+lib/
+  neet.js             Core orchestrator (Corestore + Hyperswarm + Rooms)
+  room.js             Autobase-backed multi-writer room
+  messages.js         Message type constructors
+  identity.js         Ed25519 keypair management
+  file-transfer.js    File send/receive over Hypercore
+  voice.js            Protomux voice channel (architecture ready)
+test/
+  local.js            Same-machine integration test (local DHT testnet)
 ```
 
-### 🦀 About the Rust Implementation
+## Testing
 
-The `rust/` folder contains a **stub implementation** and proof-of-concept for a Rust version of Hyperchat that demonstrates the message type system (messages, status updates, microblogs) with serialization/validation, but it doesn't actually implement the full P2P functionality because the Rust ecosystem for Hypercore is still maturing compared to the JavaScript/Node.js version. When run, it displays a warning directing users to use the fully-functional JavaScript implementation instead, while showcasing how the message structures could work in Rust and serving as a foundation for future contributors who want to build a complete Rust port once the Hypercore Rust crates become more feature-complete.
-
-## 💬 Message Types
-
-### Chat Message (Encrypted or Signed)
-```javascript
-{
-  type: 'message',
-  content: 'Hello, world!',          // Encrypted if direct message
-  timestamp: 1234567890123,
-  author: 'alice',
-  recipient: 'bob',                  // Optional
-  encrypted: true,                   // Indicates encryption
-  signature: '...'                   // GPG signature
-}
-```
-
-### Status Update (Signed)
-```javascript
-{
-  type: 'status',
-  content: 'Working on Hyperchat 🚀',
-  timestamp: 1234567890123,
-  author: 'bob',
-  signature: '...'
-}
-```
-
-### Microblog (≤280 chars, Signed)
-```javascript
-{
-  type: 'microblog',
-  content: 'Decentralization is the future!',
-  timestamp: 1234567890123,
-  author: 'charlie',
-  signature: '...'
-}
-```
-
-## 🌐 Technology Stack
-
-- **[Hypercore](https://github.com/holepunchto/hypercore)**: Append-only log data structure
-- **[Hyperswarm](https://github.com/holepunchto/hyperswarm)**: P2P networking and peer discovery
-- **[OpenPGP.js](https://openpgpjs.org/)**: 4096-bit RSA encryption and digital signatures
-- **Node.js 18+**: ES modules runtime
-- **Vanilla JavaScript**: No framework dependencies
-
-## 🧪 Testing with Multiple Users
-
-Open multiple terminals to simulate a P2P network:
+The integration test spins up a local [HyperDHT testnet](https://github.com/holepunchto/hyperdht) (no internet needed) and runs two peers through room creation, writer addition, messaging, file sharing, and persistence checks.
 
 ```bash
-# Terminal 1 - Alice
-npm start alice
-# Copy Alice's feed key
-
-# Terminal 2 - Bob  
-npm start bob
-/follow <alice-feed-key> alice
-# Wait for "New peer connected: alice" notification
-
-# Terminal 3 - Charlie
-npm start charlie
-/follow <alice-feed-key> alice
-/follow <bob-feed-key> bob
-
-# Charlie sends an encrypted direct message to bob
-/message bob Hey Bob, this is Charlie! 🔒✔️
+pnpm test
 ```
 
-Messages replicate automatically between users. Direct messages are encrypted end-to-end!
+## Dependencies
 
-## 🧪 Testing
-
-Hyperchat includes a comprehensive test suite for GPG encryption.
-
-```bash
-# Run all tests
-npm test
-
-# Run crypto tests specifically
-npm run test:crypto
-```
-
-All 6 crypto tests pass! ✅
-
-## 🛠️ Development
-
-### Prerequisites
-
-- Node.js 18+
-- npm
-
-### Running in Development Mode
-
-```bash
-# Install dependencies
-npm install
-
-# Start the CLI
-npm run start <username>
-
-# Run tests
-npm test
-```
-
-## 🔐 Security Notes
-
-- ✅ Each feed is cryptographically signed (Ed25519 by Hypercore)
-- ✅ All messages signed with 4096-bit RSA GPG keys
-- ✅ Direct messages encrypted end-to-end with GPG
-- ✅ Automatic signature verification with visual indicators (🔒✔️)
-- ✅ Messages are immutable (append-only)
-- ✅ Feed keys serve as transport identifiers
-- ⚠️ Metadata (timestamps, recipients) visible on the feed
-- ⚠️ Message deletion not possible (by design)
-- ⚠️ Keep your GPG private key secure! Never share it
-- ⚠️ RSA vulnerable to quantum computers (future risk)
-
-## 🚧 Roadmap & Limitations
-
-### Current Limitations
-
-- Metadata privacy (timestamps, recipients visible to anyone with feed access)
-- No perfect forward secrecy (GPG limitation)
-- RSA vulnerable to quantum computers (future risk)
-- Public messages readable by anyone with the feed key
-
-### Completed Features ✅
-
-- [x] End-to-end encryption (4096-bit RSA GPG)
-- [x] Digital signatures for all messages
-- [x] Automatic signature verification
-- [x] Import/export GPG keys
-- [x] Direct encrypted messaging
-- [x] Peer connection notifications
-- [x] Username mapping system
-
-### Planned Features
-
-- [ ] Group encryption (multi-recipient)
-- [ ] Perfect forward secrecy (Signal protocol)
-- [ ] Post-quantum cryptography (Kyber/Dilithium)
-- [ ] File sharing with encryption
-- [ ] User profiles and avatars
-- [ ] Search functionality
-- [ ] Mobile apps
-- [ ] Browser extension
-
-## 🤝 Contributing
-
-Contributions are welcome!
-
-### Ways to Contribute
-
-- 🐛 Report bugs via issues
-- 💡 Suggest features
-- 📝 Improve documentation
-- 🔧 Submit pull requests
-- ⭐ Star the project
-
-## 📄 License
-
-This project is licensed under the GNU Lesser General Public License v3.0 or later (LGPL-3.0-or-later).
-
-See [LICENSE](LICENSE) for the full license text.
-
-### What this means:
-
-- ✅ You can use this library in your projects (open source or proprietary)
-- ✅ You can modify this library
-- ✅ If you distribute modified versions of this library, you must release them under LGPL-3.0-or-later
-- ✅ Applications using this library can be under any license
-
-## 🙏 Acknowledgments
-
-- [DAT Ecosystem](https://dat-ecosystem.org/) - For the Hypercore Protocol
-- [Holepunch](https://holepunch.to/) - For Hypercore and Hyperswarm implementations
-- [OpenPGP.js](https://openpgpjs.org/) - For GPG encryption
-- [GNU Privacy Guard](https://gnupg.org/) - For GPG standards and tools
-- All contributors and supporters
-
----
-
-**Built with ❤️ using the DAT ecosystem**
+| Package | Purpose |
+|---|---|
+| autobase | Multi-writer append-only log |
+| corestore | Hypercore storage & replication |
+| hyperswarm | DHT peer discovery |
+| hyperdht | Direct DHT / testnet |
+| hypercore | Append-only log primitive |
+| hypercore-crypto | Ed25519 key generation |
+| protomux | Protocol multiplexing (voice) |
+| compact-encoding | Binary encoding |
+| sodium-universal | Cryptographic signing |
+| z32 | Base32 encoding for invite links |
+| b4a | Buffer/Uint8Array utilities |
+| chalk | Terminal colors |

@@ -1,0 +1,147 @@
+@media (max-width: 900px) {
+  body.mobile-ui {
+    overflow: hidden;
+  }
+
+  body.mobile-ui .mobile-only {
+    display: inline-flex;
+  }
+
+  body.mobile-ui #app {
+    position: relative;
+    height: 100dvh;
+    width: 100%;
+  }
+
+  body.mobile-ui #chatMain {
+    width: 100%;
+    min-width: 0;
+    padding-bottom: 68px;
+  }
+
+  body.mobile-ui #chatMain > .h-12 {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--color-discord-bg, #313338);
+  }
+
+  body.mobile-ui #chatMain .ml-auto {
+    gap: calc(var(--spacing) * 1.5);
+  }
+
+  body.mobile-ui #channelSearch,
+  body.mobile-ui #btnChannelSearchSubmit,
+  body.mobile-ui #channelSearchDropdown,
+  body.mobile-ui #securityStatusBtn,
+  body.mobile-ui #securityTooltip,
+  body.mobile-ui #chatHeaderDesc,
+  body.mobile-ui #chatMain .mx-3.w-px {
+    display: none;
+  }
+
+  body.mobile-ui #channelSidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(82vw, 340px);
+    z-index: 45;
+    transform: translateX(-110%);
+    transition: transform 180ms ease;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.38);
+  }
+
+  body.mobile-ui.mobile-show-channels #channelSidebar {
+    transform: translateX(0);
+  }
+
+  body.mobile-ui #membersSidebar {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: min(78vw, 320px);
+    z-index: 45;
+    transform: translateX(110%);
+    transition: transform 180ms ease;
+    display: block !important;
+    box-shadow: -14px 0 40px rgba(0, 0, 0, 0.38);
+  }
+
+  body.mobile-ui.mobile-show-members #membersSidebar {
+    transform: translateX(0);
+  }
+
+  body.mobile-ui #mobileDrawerBackdrop {
+    z-index: 40;
+  }
+
+  body.mobile-ui.mobile-show-channels #mobileDrawerBackdrop,
+  body.mobile-ui.mobile-show-members #mobileDrawerBackdrop {
+    display: block;
+  }
+
+  body.mobile-ui #serverRail {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 68px;
+    z-index: 50;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    flex-direction: row;
+    align-items: center;
+    gap: calc(var(--spacing) * 1.5);
+    padding: 0 calc(var(--spacing) * 2);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  body.mobile-ui #serverRail > .w-8.h-0\.5 {
+    display: none;
+  }
+
+  body.mobile-ui #serverList {
+    flex-direction: row;
+    align-items: center;
+    gap: calc(var(--spacing) * 1.5);
+    padding-bottom: 0;
+  }
+
+  body.mobile-ui #serverRail .server-icon {
+    width: calc(var(--spacing) * 10);
+    height: calc(var(--spacing) * 10);
+  }
+
+  body.mobile-ui #serverRail .group.mb-1,
+  body.mobile-ui #serverRail > .relative.group {
+    margin-bottom: 0;
+  }
+
+  body.mobile-ui #serverRail .server-pill {
+    display: none;
+  }
+
+  body.mobile-ui #messages {
+    padding-bottom: calc(var(--spacing) * 2);
+  }
+
+  body.mobile-ui #messageComposer {
+    padding-bottom: calc(var(--spacing) * 2);
+  }
+
+  body.mobile-ui #friendsHome {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+  }
+
+  body.mobile-ui #threadPanel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    z-index: 52;
+    background: var(--color-discord-bg, #313338);
+  }
+}
