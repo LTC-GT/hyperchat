@@ -1,10 +1,11 @@
 {
-  "name": "neet",
+  "name": "quibble",
   "version": "0.1.0",
   "description": "P2P CLI chat (text, files, voice-ready) built on Hyperswarm, Autobase & Corestore",
   "type": "module",
   "main": "lib/neet.js",
   "bin": {
+    "quibble": "./bin/neet.js",
     "neet": "./bin/neet.js"
   },
   "scripts": {
@@ -12,6 +13,7 @@
     "dev": "node ui/server.js",
     "build:css": "tailwindcss -c tailwind.config.cjs -i ./ui/public/styles.input.css -o ./ui/public/styles.css",
     "watch:css": "tailwindcss -c tailwind.config.cjs -i ./ui/public/styles.input.css -o ./ui/public/styles.css --watch",
+    "quibble": "node bin/neet.js",
     "neet": "node bin/neet.js",
     "test": "node test/local.js"
   },

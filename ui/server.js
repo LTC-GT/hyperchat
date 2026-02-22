@@ -28,6 +28,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PUBLIC = join(__dirname, 'public')
 const DEFAULT_PORT = Number(process.env.PORT || 3000)
+const LISTEN_HOST = process.env.HOST || '0.0.0.0'
 
 const MIME = {
   '.html': 'text/html',
@@ -44,6 +45,19 @@ const MIME = {
 
 let localResetInProgress = false
 
+function getLanUrls (port) {
+  const urls = []
+  const interfaces = os.networkInterfaces()
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries || []) {
+      if (!entry || entry.internal) continue
+      if (entry.family !== 'IPv4') continue
+      urls.push(`http://${entry.address}:${port}`)
+    }
+  }
+  return [...new Set(urls)]
+}
+
 function scheduleLocalReset () {
   if (localResetInProgress) return
   localResetInProgress = true
@@ -52,7 +66,7 @@ function scheduleLocalReset () {
     try {
       await neet.destroy()
     } catch (err) {
-      console.error('Failed destroying Neet during reset:', err.message)
+      console.error('Failed destroying Quibble during reset:', err.message)
     }
 
     try { wss.close() } catch {}
@@ -74,6 +88,10 @@ function scheduleLocalReset () {
 }
 
 const httpServer = createServer((req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+  res.setHeader('Pragma', 'no-cache')
+  res.setHeader('Expires', '0')
+
   if (req.method === 'POST' && req.url === '/__reset-local-db') {
     scheduleLocalReset()
     res.writeHead(202, { 'Content-Type': 'application/json' })
@@ -109,7 +127,7 @@ const identity = loadIdentity()
 const { neet, storageDir } = await initNeet(identity)
 
 async function initNeet (identity) {
-  const preferredStorage = process.env.NEET_UI_STORAGE || join(identity.dir, 'storage-ui')
+  const preferredStorage = process.env.QUIBBLE_UI_STORAGE || process.env.NEET_UI_STORAGE || join(identity.dir, 'storage-ui')
 
   const maxAttempts = 8
   const retryDelayMs = 500
@@ -132,10 +150,11 @@ async function initNeet (identity) {
 
       throw new Error([
         `Corestore path is locked: ${preferredStorage}`,
-        'Another Neet process is likely still running.',
+        'Another Quibble process is likely still running.',
         'Close the other process (or wait for it to fully exit) and run pnpm dev again.',
-        'To use a different persistent storage path, set NEET_UI_STORAGE=/path/to/storage pnpm dev.'
+        'To use a different persistent storage path, set QUIBBLE_UI_STORAGE=/path/to/storage pnpm dev.'
       ].join(' '))
+      console.error('Failed destroying Quibble during reset:', err.message)
     }
   }
 
@@ -1446,8 +1465,13 @@ if (listenPort !== DEFAULT_PORT) {
   console.warn(`⚠️  Port ${DEFAULT_PORT} is in use, using ${listenPort} instead.`)
 }
 
-httpServer.listen(listenPort, () => {
-  console.log(`\n  🚀 Neet Web UI running at http://localhost:${listenPort}\n`)
+httpServer.listen(listenPort, LISTEN_HOST, () => {
+  console.log(`\n  🚀 Quibble Web UI running at http://localhost:${listenPort}`)
+  const lanUrls = getLanUrls(listenPort)
+  for (const url of lanUrls) {
+    console.log(`  📱 LAN: ${url}`)
+  }
+  console.log('')
   console.log(`  Identity: ${identity.name} (${b4a.toString(identity.publicKey, 'hex').slice(0, 16)}…)`)
   console.log(`  Storage:  ${storageDir}\n`)
 })

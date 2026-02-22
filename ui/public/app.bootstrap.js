@@ -263,9 +263,15 @@ loadClientSettings()
 initAppDialogs()
 
 const BOOT_ROOM_DISCOVERY_WAIT_MS = 900
-const CLIENT_SETTINGS_KEY = 'neet-client-settings-v1'
+const WS_CONNECT_TIMEOUT_MS = 8000
+const WS_RECONNECT_DELAY_MS = 2000
+const CLIENT_SETTINGS_KEY = 'quibble-client-settings-v1'
+const LEGACY_CLIENT_SETTINGS_KEY = 'neet-client-settings-v1'
 const PRESENCE_STATUSES = ['online', 'idle', 'dnd', 'invisible', 'offline']
 let localDbResetPending = false
+let wsSessionToken = 0
+let wsConnectTimeout = null
+let wsReconnectTimer = null
 
 function initAppDialogs () {
   if (!dom.appDialogModal || !dom.appDialogConfirm || !dom.appDialogCancel) return
@@ -305,7 +311,7 @@ function pumpAppDialogQueue () {
   if (activeAppDialog || appDialogQueue.length === 0 || !dom.appDialogModal) return
   activeAppDialog = appDialogQueue.shift()
 
-  const title = String(activeAppDialog.title || 'Neet')
+  const title = String(activeAppDialog.title || 'Quibble')
   const message = String(activeAppDialog.message || '')
   const mode = activeAppDialog.mode || 'alert'
   const showInput = mode === 'prompt'
@@ -363,7 +369,7 @@ function resolveActiveAppDialog (confirmed) {
 function appAlert (message, options = {}) {
   return queueAppDialog({
     mode: 'alert',
-    title: options.title || 'Neet',
+    title: options.title || 'Quibble',
     message,
     confirmText: options.confirmText || 'OK'
   })
@@ -372,7 +378,7 @@ function appAlert (message, options = {}) {
 function appConfirm (message, options = {}) {
   return queueAppDialog({
     mode: 'confirm',
-    title: options.title || 'Neet',
+    title: options.title || 'Quibble',
     message,
     confirmText: options.confirmText || 'OK',
     cancelText: options.cancelText || 'Cancel'
@@ -382,7 +388,7 @@ function appConfirm (message, options = {}) {
 function appPrompt (message, options = {}) {
   return queueAppDialog({
     mode: 'prompt',
-    title: options.title || 'Neet',
+    title: options.title || 'Quibble',
     message,
     defaultValue: options.defaultValue || '',
     placeholder: options.placeholder || '',
@@ -393,7 +399,7 @@ function appPrompt (message, options = {}) {
 
 function loadClientSettings () {
   try {
-    const raw = localStorage.getItem(CLIENT_SETTINGS_KEY)
+    const raw = localStorage.getItem(CLIENT_SETTINGS_KEY) || localStorage.getItem(LEGACY_CLIENT_SETTINGS_KEY)
     if (!raw) return
     const parsed = JSON.parse(raw)
     state.settings = {
@@ -444,7 +450,7 @@ function handleLocalDbResetReady () {
   closeUserSettings()
   dom.userStatusMenu?.classList.add('hidden')
 
-  appAlert('Local DB was deleted. Neet will close now. Relaunch the app to continue with Introduce yourself.', {
+  appAlert('Local DB was deleted. Quibble will close now. Relaunch the app to continue with Introduce yourself.', {
     title: 'Reset complete',
     confirmText: 'Close'
   }).finally(() => {
@@ -552,11 +558,76 @@ function updateConnectionGate () {
   dom.connectionGateDetail.textContent = `Downloading initial message pages for ${pending} room${pending === 1 ? '' : 's'}`
 }
 
+function clearWsConnectTimeout () {
+  if (!wsConnectTimeout) return
+  clearTimeout(wsConnectTimeout)
+  wsConnectTimeout = null
+}
+
+function clearWsReconnectTimer () {
+  if (!wsReconnectTimer) return
+  clearTimeout(wsReconnectTimer)
+  wsReconnectTimer = null
+}
+
+function resetBootConnectionState () {
+  state.boot.connected = false
+  state.boot.identityReady = false
+  state.boot.roomDiscoveryReady = false
+  state.boot.pendingRoomHistory.clear()
+  state.boot.loadedRoomHistory.clear()
+  clearHistoryTimers()
+  state.boot.sessionToken++
+  dom.app.classList.remove('hidden')
+  updateSecurityStatus()
+  updateConnectionGate()
+}
+
+function scheduleReconnect (delay = WS_RECONNECT_DELAY_MS) {
+  if (wsReconnectTimer) return
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null
+    connect()
+  }, delay)
+}
+
 function connect () {
+  const token = ++wsSessionToken
+  clearWsConnectTimeout()
+
+  if (state.ws) {
+    state.ws.onopen = null
+    state.ws.onmessage = null
+    state.ws.onclose = null
+    state.ws.onerror = null
+  }
+
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  state.ws = new WebSocket(`${proto}://${location.host}`)
+  try {
+    state.ws = new WebSocket(`${proto}://${location.host}`)
+  } catch (error) {
+    console.warn('[ws] failed to start socket, retrying soon', error)
+    resetBootConnectionState()
+    scheduleReconnect(1000)
+    return
+  }
+
+  wsConnectTimeout = setTimeout(() => {
+    if (token !== wsSessionToken) return
+    if (state.ws?.readyState !== WebSocket.CONNECTING) return
+    console.warn('[ws] connect timeout, forcing reconnect')
+    resetBootConnectionState()
+    try {
+      state.ws.close()
+    } catch {}
+    scheduleReconnect(1000)
+  }, WS_CONNECT_TIMEOUT_MS)
+
   state.ws.onopen = () => {
+    if (token !== wsSessionToken) return
     console.log('[ws] connected')
+    clearWsConnectTimeout()
+    clearWsReconnectTimer()
     state.boot.connected = true
     state.boot.identityReady = false
     state.boot.roomDiscoveryReady = false
@@ -568,20 +639,25 @@ function connect () {
     updateSecurityStatus()
     updateConnectionGate()
   }
-  state.ws.onmessage = (e) => handleServerMessage(JSON.parse(e.data))
+  state.ws.onmessage = (e) => {
+    if (token !== wsSessionToken) return
+    handleServerMessage(JSON.parse(e.data))
+  }
+  state.ws.onerror = (error) => {
+    if (token !== wsSessionToken) return
+    console.warn('[ws] socket error', error)
+    if (state.ws?.readyState === WebSocket.CONNECTING || state.ws?.readyState === WebSocket.OPEN) {
+      try {
+        state.ws.close()
+      } catch {}
+    }
+  }
   state.ws.onclose = () => {
+    if (token !== wsSessionToken) return
     console.log('[ws] disconnected, reconnecting in 2s…')
-    state.boot.connected = false
-    state.boot.identityReady = false
-    state.boot.roomDiscoveryReady = false
-    state.boot.pendingRoomHistory.clear()
-    state.boot.loadedRoomHistory.clear()
-    clearHistoryTimers()
-    state.boot.sessionToken++
-    dom.app.classList.remove('hidden')
-    updateSecurityStatus()
-    updateConnectionGate()
-    setTimeout(connect, 2000)
+    clearWsConnectTimeout()
+    resetBootConnectionState()
+    scheduleReconnect()
   }
 }
 

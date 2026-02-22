@@ -1,7 +1,7 @@
 /**
  * Same-machine integration test.
  *
- * Creates two independent neet peers (Alice & Bob) with separate storage,
+ * Creates two independent Quibble peers (Alice & Bob) with separate storage,
  * connects them through a local HyperDHT testnet (no internet required),
  * and verifies:
  *   1. Room creation + invite link generation
@@ -25,7 +25,7 @@ import { sendFile, recvFile } from '../lib/file-transfer.js'
 const require = createRequire(import.meta.url)
 const createTestnet = require('hyperdht/testnet')
 
-const TMP = path.join(os.tmpdir(), 'neet-test-' + Date.now())
+const TMP = path.join(os.tmpdir(), 'quibble-test-' + Date.now())
 fs.mkdirSync(TMP, { recursive: true })
 
 const ALICE_DIR = path.join(TMP, 'alice')
@@ -49,7 +49,7 @@ async function sleep (ms) {
 }
 
 console.log('═══════════════════════════════════════')
-console.log('  neet same-machine integration test')
+console.log('  Quibble same-machine integration test')
 console.log('═══════════════════════════════════════\n')
 console.log(`Storage: ${TMP}\n`)
 
@@ -194,7 +194,7 @@ console.log('\n5. File sharing')
 
 // Create a test file
 const testFilePath = path.join(TMP, 'test-file.txt')
-fs.writeFileSync(testFilePath, 'This is a test file shared via neet P2P!\n'.repeat(100))
+fs.writeFileSync(testFilePath, 'This is a test file shared via Quibble P2P!\n'.repeat(100))
 const testFileSize = fs.statSync(testFilePath).size
 
 const fileMessage = await sendFile(testFilePath, alice.store, aliceRoom, alice.identity)

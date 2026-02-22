@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 /**
- * neet – P2P CLI chat.
+ * Quibble – P2P CLI chat.
  *
  * Usage:
- *   neet create                     – create a new room, print invite link
- *   neet join <link>                – join a room by pear://neet/... link
- *   neet id                         – show your identity
- *   neet name <name>                – set display name
+ *   quibble create                  – create a new room, print invite link
+ *   quibble join <link>             – join a room by pear://neet/... link
+ *   quibble id                      – show your identity
+ *   quibble name <name>             – set display name
  *
  * Inside a room you get an interactive prompt:
  *   /send <path>                    – share a file
@@ -37,12 +37,12 @@ const cmd = args[0]
 
 if (!cmd || cmd === '--help' || cmd === '-h') {
   console.log(`
-${chalk.bold('neet')} – P2P CLI chat
+${chalk.bold('Quibble')} – P2P CLI chat
 
-  ${chalk.cyan('neet create')}              Create a new room
-  ${chalk.cyan('neet join <link>')}         Join by pear://neet/... link or hex key
-  ${chalk.cyan('neet id')}                  Show your identity
-  ${chalk.cyan('neet name <name>')}         Set your display name
+  ${chalk.cyan('quibble create')}           Create a new room
+  ${chalk.cyan('quibble join <link>')}      Join by pear://neet/... link or hex key
+  ${chalk.cyan('quibble id')}               Show your identity
+  ${chalk.cyan('quibble name <name>')}      Set your display name
 `)
   process.exit(0)
 }
@@ -58,7 +58,7 @@ if (cmd === 'id') {
 
 if (cmd === 'name') {
   const name = args.slice(1).join(' ')
-  if (!name) { console.error('Usage: neet name <display name>'); process.exit(1) }
+  if (!name) { console.error('Usage: quibble name <display name>'); process.exit(1) }
   loadIdentity() // ensure identity exists
   setName(name)
   console.log(`Display name set to ${chalk.green(name)}`)
@@ -82,7 +82,7 @@ if (cmd === 'create') {
   console.log(`  ${chalk.dim('Share this link with others so they can join.\n')}`)
 } else if (cmd === 'join') {
   const target = args[1]
-  if (!target) { console.error('Usage: neet join <link|hexKey>'); process.exit(1) }
+  if (!target) { console.error('Usage: quibble join <link|hexKey>'); process.exit(1) }
   console.log(chalk.yellow('Joining room…'))
   room = await neet.joinRoom(target)
   console.log(chalk.green.bold('✦ Joined room'))

@@ -1,6 +1,8 @@
-# neet
+# Quibble
 
 Peer-to-peer CLI chat with text messaging, file sharing, and a voice-ready architecture — all running over Hyperswarm with no central server.
+
+Quibble is built on the `neet` protocol.
 
 Every room is an [Autobase](https://github.com/holepunchto/autobase) multi-writer log backed by [Corestore](https://github.com/holepunchto/corestore), so messages persist and can be delivered to peers who join later (offline delivery). Invite links use the `pear://neet/...` format.
 
@@ -10,13 +12,13 @@ Every room is an [Autobase](https://github.com/holepunchto/autobase) multi-write
 pnpm install
 
 # Create your identity (auto-generated on first run)
-node bin/neet.js name alice
+pnpm quibble name alice
 
 # Create a room and get the invite link
-node bin/neet.js create
+pnpm quibble create
 
 # On another terminal, join by link
-node bin/neet.js join pear://neet/aqxrtr6dpecgwqdbaq9x7w3p4hk3xqpyoh7gkbgmcn574y7yymro
+pnpm quibble join pear://neet/aqxrtr6dpecgwqdbaq9x7w3p4hk3xqpyoh7gkbgmcn574y7yymro
 ```
 
 ## Web UI
@@ -52,7 +54,7 @@ pnpm run watch:css
 Notes:
 
 - If you see `File descriptor could not be locked`, another process is likely still using the same Corestore path. The Web UI now retries briefly, then exits with a clear error instead of switching to temporary storage (to prevent rooms from appearing to disappear across restarts).
-- You can set your own UI storage path with `NEET_UI_STORAGE=/path/to/storage pnpm dev`.
+- You can set your own UI storage path with `QUIBBLE_UI_STORAGE=/path/to/storage pnpm dev` (legacy `NEET_UI_STORAGE` is also supported).
 - Prefer Node LTS (18/20/22). Very new Node versions may be unstable with native storage dependencies.
 - Tailwind is built locally with **Tailwind v4 CLI** (`@tailwindcss/cli`), not via CDN.
 
@@ -60,10 +62,10 @@ Notes:
 
 | Command | Description |
 |---|---|
-| `neet create` | Create a new room, print its invite link |
-| `neet join <link>` | Join a room by `pear://neet/...` link or hex key |
-| `neet id` | Print your identity (public key + display name) |
-| `neet name <name>` | Set your display name |
+| `quibble create` | Create a new room, print its invite link |
+| `quibble join <link>` | Join a room by `pear://neet/...` link or hex key |
+| `quibble id` | Print your identity (public key + display name) |
+| `quibble name <name>` | Set your display name |
 
 ### In-room commands
 
@@ -83,7 +85,7 @@ Anything else typed at the prompt is sent as a text message.
 
 ```
 ┌──────────────────────────────────────────────────┐
-│                   neet node                      │
+│                 Quibble node                     │
 │                                                  │
 │  Identity        Ed25519 keypair (~/.neet/)      │
 │  Corestore       Persistent Hypercore storage    │
@@ -113,7 +115,7 @@ Anything else typed at the prompt is sent as a text message.
 ## Project layout
 
 ```
-bin/neet.js           CLI entry point
+bin/neet.js           CLI entry point (command: quibble)
 lib/
   neet.js             Core orchestrator (Corestore + Hyperswarm + Rooms)
   room.js             Autobase-backed multi-writer room
