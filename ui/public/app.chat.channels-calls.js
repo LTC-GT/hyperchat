@@ -149,7 +149,7 @@ function messageBelongsToTextChannel (msg, channelId) {
     if (msg.action === 'message-pin' || msg.action === 'message-unpin') {
       return (msg.data?.channelId || 'general') === channelId
     }
-    if (msg.action === 'friend-request' || msg.action === 'friend-accept') return true
+    if (msg.action === 'friend-request' || msg.action === 'friend-accept') return false
     if (msg.action === 'room-ban' || msg.action === 'room-unban' || msg.action === 'room-kick' || msg.action === 'room-unkick' || msg.action === 'channel-kick' || msg.action === 'channel-unkick') return true
     if (msg.action?.startsWith('call-')) return false
     return channelId === 'general'

@@ -284,10 +284,17 @@ function renderFriendsHome () {
     row.className = 'bg-quibble-bg rounded px-2 py-2 flex items-center gap-2'
     row.innerHTML = `<span class="flex-1 truncate">${esc(req.name)}</span><button class="accept px-2 py-0.5 rounded bg-quibble-green text-white text-xs">Accept</button>`
     row.querySelector('.accept')?.addEventListener('click', () => {
-      if (!state.activeRoom) return
-      send({ type: 'friend-accept', roomKey: req.roomKey || state.activeRoom, targetKey: key })
+      const roomKey = req.roomKey || state.activeRoom
+      if (!roomKey) return
+
+      if (state.activeRoom !== roomKey) {
+        selectRoom(roomKey)
+      }
+
+      send({ type: 'friend-accept', roomKey, targetKey: key })
       state.friends.set(key, { name: req.name })
       state.friendRequests.delete(key)
+      openDmWithFriend(key, req.name)
       renderFriendsHome()
       updateMemberList()
     })

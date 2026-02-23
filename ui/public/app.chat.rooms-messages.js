@@ -430,6 +430,7 @@ function createSystemMessageEl (msg) {
   if (msg.action === 'call-signal' || msg.action === 'call-start' || msg.action === 'call-join' || msg.action === 'call-end') return null
   if (msg.action === 'message-edit') return null
   if (msg.action === 'presence-set') return null
+  if (msg.action === 'friend-request' || msg.action === 'friend-accept') return null
 
   const div = document.createElement('div')
   div.className = 'flex items-center gap-2 px-1 py-1 text-xs text-quibble-text-m fade-in'
@@ -449,8 +450,6 @@ function createSystemMessageEl (msg) {
   else if (msg.action === 'room-disband') text = `<span class="font-medium text-quibble-text">${esc(msg.senderName || 'Someone')}</span> disbanded the group`
   else if (msg.action === 'message-pin') text = `<span class="font-medium text-quibble-text">${esc(msg.senderName || 'Someone')}</span> pinned a message`
   else if (msg.action === 'message-unpin') text = `<span class="font-medium text-quibble-text">${esc(msg.senderName || 'Someone')}</span> unpinned a message`
-  else if (msg.action === 'friend-request') text = `<span class="font-medium text-quibble-text">${esc(msg.senderName || 'Someone')}</span> sent a friend request`
-  else if (msg.action === 'friend-accept') text = `<span class="font-medium text-quibble-text">${esc(msg.senderName || 'Someone')}</span> accepted a friend request`
   else if (msg.action === 'room-kick') text = `<span class="font-medium text-quibble-text">${esc(msg.senderName || 'Someone')}</span> kicked <span class="font-medium text-quibble-text">${esc(msg.data?.targetName || 'a user')}</span> from the server`
   else if (msg.action === 'room-unkick') text = `<span class="font-medium text-quibble-text">${esc(msg.senderName || 'Someone')}</span> restored <span class="font-medium text-quibble-text">${esc(msg.data?.targetName || 'a user')}</span> to the server`
   else if (msg.action === 'channel-add') text = `<span class="font-medium text-quibble-text">${esc(msg.senderName || 'Someone')}</span> created ${esc(msg.data?.kind || 'text')} channel ${esc(msg.data?.name || '')}`
