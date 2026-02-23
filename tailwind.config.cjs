@@ -6,7 +6,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        discord: {
+        quibble: {
           bg: '#313338',
           sidebar: '#2b2d31',
           serverbar: '#1e1f22',

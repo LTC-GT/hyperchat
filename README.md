@@ -1,10 +1,12 @@
 # Quibble
 
+#### Futura Vox Libera
+
 Peer-to-peer CLI chat with text messaging, file sharing, and a voice-ready architecture — all running over Hyperswarm with no central server.
 
-Quibble is built on the `neet` protocol.
+Quibble is built on the `quibble` protocol.
 
-Every room is an [Autobase](https://github.com/holepunchto/autobase) multi-writer log backed by [Corestore](https://github.com/holepunchto/corestore), so messages persist and can be delivered to peers who join later (offline delivery). Invite links use the `pear://neet/...` format.
+Every room is an [Autobase](https://github.com/holepunchto/autobase) multi-writer log backed by [Corestore](https://github.com/holepunchto/corestore), so messages persist and can be delivered to peers who join later (offline delivery). Invite links use the `pear://quibble/...` format.
 
 ## Quick start
 
@@ -18,7 +20,7 @@ pnpm quibble name alice
 pnpm quibble create
 
 # On another terminal, join by link
-pnpm quibble join pear://neet/aqxrtr6dpecgwqdbaq9x7w3p4hk3xqpyoh7gkbgmcn574y7yymro
+pnpm quibble join pear://quibble/aqxrtr6dpecgwqdbaq9x7w3p4hk3xqpyoh7gkbgmcn574y7yymro
 ```
 
 ## Web UI
@@ -54,7 +56,7 @@ pnpm run watch:css
 Notes:
 
 - If you see `File descriptor could not be locked`, another process is likely still using the same Corestore path. The Web UI now retries briefly, then exits with a clear error instead of switching to temporary storage (to prevent rooms from appearing to disappear across restarts).
-- You can set your own UI storage path with `QUIBBLE_UI_STORAGE=/path/to/storage pnpm dev` (legacy `NEET_UI_STORAGE` is also supported).
+- You can set your own UI storage path with `QUIBBLE_UI_STORAGE=/path/to/storage pnpm dev`.
 - Prefer Node LTS (18/20/22). Very new Node versions may be unstable with native storage dependencies.
 - Tailwind is built locally with **Tailwind v4 CLI** (`@tailwindcss/cli`), not via CDN.
 
@@ -63,7 +65,7 @@ Notes:
 | Command | Description |
 |---|---|
 | `quibble create` | Create a new room, print its invite link |
-| `quibble join <link>` | Join a room by `pear://neet/...` link or hex key |
+| `quibble join <link>` | Join a room by `pear://quibble/...` link or hex key |
 | `quibble id` | Print your identity (public key + display name) |
 | `quibble name <name>` | Set your display name |
 
@@ -87,7 +89,7 @@ Anything else typed at the prompt is sent as a text message.
 ┌──────────────────────────────────────────────────┐
 │                 Quibble node                     │
 │                                                  │
-│  Identity        Ed25519 keypair (~/.neet/)      │
+│  Identity        Ed25519 keypair (~/.quibble/)   │
 │  Corestore       Persistent Hypercore storage    │
 │  Hyperswarm      DHT-based peer discovery        │
 │                                                  │
@@ -98,26 +100,26 @@ Anything else typed at the prompt is sent as a text message.
 │  └────────────────────────────────────────────┘  │
 │                                                  │
 │  File transfer   Dedicated Hypercore per file    │
-│  Voice (ready)   Protomux "neet-voice" channel   │
+│  Voice (ready)   Protomux "quibble-voice" channel │
 └──────────────────────────────────────────────────┘
 ```
 
 ### Key concepts
 
-- **Rooms** — Each room is an Autobase whose bootstrap key is encoded as a `pear://neet/<z32>` invite link. Every writer is also an indexer so any peer can produce the linearized view.
+- **Rooms** — Each room is an Autobase whose bootstrap key is encoded as a `pear://quibble/<z32>` invite link. Every writer is also an indexer so any peer can produce the linearized view.
 - **Messages** — JSON objects with a `type` field: `text`, `file`, `system`, `reaction`, `voice`. All carry a sender public key, display name, timestamp, and unique ID.
 - **Default encryption** — Room messages are encrypted by default with libsodium (`crypto_secretbox`) using a per-room key derived from the room key. `add-writer` control messages remain plaintext so Autobase membership updates still work.
 - **File sharing** — Files are split into 64 KiB blocks in a new Hypercore. A `file` message in the room references the core key; recipients replicate it via Corestore.
-- **Voice (architecture)** — Real-time audio is *not* routed through Autobase. Instead, a Protomux `neet-voice` channel is opened directly between peers on the Hyperswarm connection, carrying signaling (JSON), raw audio frames, and control messages.
+- **Voice (architecture)** — Real-time audio is *not* routed through Autobase. Instead, a Protomux `quibble-voice` channel is opened directly between peers on the Hyperswarm connection, carrying signaling (JSON), raw audio frames, and control messages.
 - **Offline delivery** — Because messages live in Hypercores replicated through Corestore, a peer joining later will catch up on the full view history.
 - **Paged sync (Git/Torrent-style)** — The Web UI fetches message history in pages by sequence cursor (`beforeSeq`) and loads older pages only when needed, so peers do not transmit an entire database file on each join.
 
 ## Project layout
 
 ```
-bin/neet.js           CLI entry point (command: quibble)
+bin/quibble.js        CLI entry point (command: quibble)
 lib/
-  neet.js             Core orchestrator (Corestore + Hyperswarm + Rooms)
+  quibble.js          Core orchestrator (Corestore + Hyperswarm + Rooms)
   room.js             Autobase-backed multi-writer room
   messages.js         Message type constructors
   identity.js         Ed25519 keypair management

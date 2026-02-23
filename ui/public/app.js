@@ -1,4 +1,16 @@
-const APP_PARTS = ['app.bootstrap.js', 'app.chat.js', 'app.calls.js']
+const APP_PARTS = [
+  'app.bootstrap.core.js',
+  'app.bootstrap.connection.js',
+  'app.bootstrap.ui.js',
+  'app.chat.rooms-messages.js',
+  'app.chat.admin-channels.js',
+  'app.chat.channels-calls.js',
+  'app.calls.calling.js',
+  'app.calls.presence-members.js',
+  'app.calls.home-utils.js',
+  'ui.desktop.js',
+  'ui.mobile.js'
+]
 
 async function loadScriptSequentially (src) {
   await new Promise((resolve, reject) => {

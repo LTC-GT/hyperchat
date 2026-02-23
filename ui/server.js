@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import b4a from 'b4a'
 
-import { loadIdentity, setName } from '../lib/identity.js'
-import { Neet } from '../lib/neet.js'
+import { loadIdentity, setName, getSeedPhrase, importSeedPhrase } from '../lib/identity.js'
+import { Quibble } from '../lib/quibble.js'
 import { textMsg, systemMsg, voiceMsg, videoMsg, randomRoomIconEmoji } from '../lib/messages.js'
 import { sendFile } from '../lib/file-transfer.js'
 import { attachVoice } from '../lib/voice.js'
@@ -58,13 +58,13 @@ function getLanUrls (port) {
   return [...new Set(urls)]
 }
 
-function scheduleLocalReset () {
+function scheduleAppShutdown ({ wipeLocal = false } = {}) {
   if (localResetInProgress) return
   localResetInProgress = true
 
   setTimeout(async () => {
     try {
-      await neet.destroy()
+      await quibble.destroy()
     } catch (err) {
       console.error('Failed destroying Quibble during reset:', err.message)
     }
@@ -72,19 +72,29 @@ function scheduleLocalReset () {
     try { wss.close() } catch {}
     try { httpServer.close() } catch {}
 
-    const resetPaths = new Set([identity.dir])
-    if (storageDir && !storageDir.startsWith(identity.dir)) resetPaths.add(storageDir)
+    if (wipeLocal) {
+      const resetPaths = new Set([identity.dir])
+      if (storageDir && !storageDir.startsWith(identity.dir)) resetPaths.add(storageDir)
 
-    for (const target of resetPaths) {
-      try {
-        rmSync(target, { recursive: true, force: true })
-      } catch (err) {
-        console.error(`Failed deleting ${target}:`, err.message)
+      for (const target of resetPaths) {
+        try {
+          rmSync(target, { recursive: true, force: true })
+        } catch (err) {
+          console.error(`Failed deleting ${target}:`, err.message)
+        }
       }
     }
 
     setTimeout(() => process.exit(0), 120)
   }, 40)
+}
+
+function scheduleLocalReset () {
+  scheduleAppShutdown({ wipeLocal: true })
+}
+
+function scheduleIdentityReload () {
+  scheduleAppShutdown({ wipeLocal: false })
 }
 
 const httpServer = createServer((req, res) => {
@@ -123,20 +133,20 @@ const httpServer = createServer((req, res) => {
 })
 
 // ─── P2P Node ───
-const identity = loadIdentity()
-const { neet, storageDir } = await initNeet(identity)
+const identity = await loadIdentity()
+const { quibble, storageDir } = await initQuibble(identity)
 
-async function initNeet (identity) {
-  const preferredStorage = process.env.QUIBBLE_UI_STORAGE || process.env.NEET_UI_STORAGE || join(identity.dir, 'storage-ui')
+async function initQuibble (identity) {
+  const preferredStorage = process.env.QUIBBLE_UI_STORAGE || join(identity.dir, 'storage-ui')
 
   const maxAttempts = 8
   const retryDelayMs = 500
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const neet = new Neet({ storage: preferredStorage, identity })
-      await neet.ready()
-      return { neet, storageDir: preferredStorage }
+      const quibble = new Quibble({ storage: preferredStorage, identity })
+      await quibble.ready()
+      return { quibble, storageDir: preferredStorage }
     } catch (err) {
       const message = String(err?.message || '')
       const lockBusy = message.includes('File descriptor could not be locked')
@@ -173,8 +183,10 @@ const { profilePath, loadProfile, saveProfile } = createProfileStore(identity)
 const roomsPath = join(identity.dir, 'rooms.json')
 
 function normalizePresenceStatus (value) {
-  const status = String(value || 'online')
-  return ['online', 'idle', 'dnd', 'invisible', 'offline'].includes(status) ? status : 'online'
+  const status = String(value || 'active').toLowerCase()
+  if (status === 'active' || status === 'away') return status
+  if (status === 'online') return 'active'
+  return 'away'
 }
 
 function loadPersistedRooms () {
@@ -245,7 +257,7 @@ async function restorePersistedRooms () {
   const restored = []
   for (const entry of persisted) {
     try {
-      const room = await neet.joinRoom(entry.link)
+      const room = await quibble.joinRoom(entry.link)
       const roomKey = b4a.toString(room.key, 'hex')
       restored.push({ roomKey, link: room.inviteLink, addedAt: entry.addedAt || Date.now() })
     } catch (err) {
@@ -287,7 +299,7 @@ wss.on('connection', (ws) => {
   }))
 
   // Send existing rooms
-  for (const [keyHex, room] of neet.rooms) {
+  for (const [keyHex, room] of quibble.rooms) {
     ws.send(JSON.stringify({
       type: 'room-info',
       roomKey: keyHex,
@@ -307,10 +319,11 @@ wss.on('connection', (ws) => {
     try {
       switch (msg.type) {
         case 'set-profile': {
+          const setupWasDone = Boolean(profile.setupDone)
           const fullName = String(msg.fullName || '').trim()
           const username = String(msg.username || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24)
           if (username) {
-            setName(username)
+            await setName(username, identity.dir)
             identity.name = username
           }
 
@@ -325,19 +338,32 @@ wss.on('connection', (ws) => {
           identity.avatar = updated.avatar || null
           identity.status = normalizePresenceStatus(updated.presenceStatus)
           ws.send(JSON.stringify({ type: 'profile-updated', ...updated }))
+
+          if (!setupWasDone && updated.setupDone) {
+            try {
+              const phrase = await getSeedPhrase({ dir: identity.dir, name: identity.name || username || 'anon' })
+              ws.send(JSON.stringify({
+                type: 'account-seed-created',
+                seedPhrase: phrase
+              }))
+            } catch (err) {
+              console.warn('Failed sending seed phrase backup payload:', err.message)
+            }
+          }
           break
         }
 
         case 'set-presence-status': {
           const nextStatus = normalizePresenceStatus(msg.status)
+          const activityAt = Number(msg.at) || Date.now()
           identity.status = nextStatus
           profile = saveProfile({ presenceStatus: nextStatus })
 
           ws.send(JSON.stringify({ type: 'profile-updated', ...profile }))
 
-          for (const [roomKey, room] of neet.rooms) {
+          for (const [roomKey, room] of quibble.rooms) {
             try {
-              const presenceMsg = systemMsg('presence-set', { status: nextStatus }, identity)
+              const presenceMsg = systemMsg('presence-set', { status: nextStatus, at: activityAt }, identity)
               await room.append(presenceMsg)
             } catch (err) {
               console.warn(`Failed broadcasting presence to room ${roomKey}:`, err.message)
@@ -347,19 +373,24 @@ wss.on('connection', (ws) => {
         }
 
         case 'create-room': {
-          const room = await neet.createRoom()
+          const room = await quibble.createRoom()
           const keyHex = b4a.toString(room.key, 'hex')
           persistRoom(keyHex, room.inviteLink)
 
+          const emoji = String(msg.emoji || '').trim() || randomRoomIconEmoji()
+          const imageData = typeof msg.imageData === 'string' && msg.imageData.startsWith('data:image/')
+            ? msg.imageData.slice(0, 2_000_000)
+            : null
+
           const roomProfileMsg = systemMsg('room-profile-set', {
-            emoji: randomRoomIconEmoji(),
-            imageData: null,
-            mimeType: null
+            emoji,
+            imageData,
+            mimeType: imageData ? String(msg.mimeType || 'image/webp') : null
           }, identity)
           await room.append(roomProfileMsg)
 
           const ownerKey = b4a.toString(identity.publicKey, 'hex')
-          const ownerMsg = systemMsg('room-owner-set', { owner: ownerKey }, identity)
+          const ownerMsg = systemMsg('room-owner-set', { owner: ownerKey, initial: true }, identity)
           await room.append(ownerMsg)
 
           const adminMsg = systemMsg('room-admin-set', {
@@ -400,7 +431,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'set-room-profile': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -425,7 +456,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'set-room-name': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -444,7 +475,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'join-room': {
-          const room = await neet.joinRoom(msg.link)
+          const room = await quibble.joinRoom(msg.link)
           const keyHex = b4a.toString(room.key, 'hex')
           persistRoom(keyHex, room.inviteLink)
 
@@ -472,12 +503,13 @@ wss.on('connection', (ws) => {
         }
 
         case 'send-message': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
 
           const channelId = msg.channelId || 'general'
+          const dmKey = msg.dmKey ? String(msg.dmKey) : null
           const senderHex = b4a.toString(identity.publicKey, 'hex')
-          const moderationError = await getModerationError(room, senderHex, channelId)
+          const moderationError = await getModerationError(room, senderHex, dmKey ? null : channelId)
           if (moderationError) {
             ws.send(JSON.stringify({ type: 'error', message: moderationError }))
             break
@@ -500,7 +532,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'edit-message': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.messageId) break
 
           const nextText = String(msg.text || '').trim()
@@ -530,8 +562,73 @@ wss.on('connection', (ws) => {
           break
         }
 
+        case 'toggle-message-reaction': {
+          const room = quibble.rooms.get(msg.roomKey)
+          if (!room || !msg.messageId) break
+
+          const emoji = String(msg.emoji || '').trim().slice(0, 64)
+          if (!emoji) break
+
+          const target = await findMessageById(room, String(msg.messageId))
+          if (!target || (target.type !== 'text' && target.type !== 'file')) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Message not found or not reactable.' }))
+            break
+          }
+
+          const senderHex = b4a.toString(identity.publicKey, 'hex')
+          const channelId = String(target.channelId || 'general')
+          const dmKey = target.dmKey ? String(target.dmKey) : null
+
+          if (dmKey) {
+            const participants = new Set((Array.isArray(target.dmParticipants) ? target.dmParticipants : [])
+              .map((value) => String(value))
+              .filter(Boolean))
+            if (target.sender) participants.add(String(target.sender))
+            if (participants.size === 0 && dmKey.includes(':')) {
+              for (const key of dmKey.split(':').map((value) => String(value).trim()).filter(Boolean)) {
+                participants.add(key)
+              }
+            }
+
+            if (!participants.has(senderHex)) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Only DM participants can react in this DM.' }))
+              break
+            }
+          } else {
+            const moderationError = await getModerationError(room, senderHex, channelId)
+            if (moderationError) {
+              ws.send(JSON.stringify({ type: 'error', message: moderationError }))
+              break
+            }
+
+            const modOnly = await channelIsModOnly(room, channelId)
+            if (modOnly && !(await isRoomAdmin(room, senderHex))) {
+              ws.send(JSON.stringify({ type: 'error', message: 'This channel is restricted to moderators/admins.' }))
+              break
+            }
+          }
+
+          const active = await getLatestUserReactionState(room, {
+            messageId: String(msg.messageId),
+            emoji,
+            senderKey: senderHex
+          })
+
+          const reactionEvent = systemMsg('message-reaction', {
+            messageId: String(msg.messageId),
+            emoji,
+            on: !active,
+            channelId,
+            dmKey,
+            threadRootId: target.threadRootId ? String(target.threadRootId) : null
+          }, identity)
+
+          await room.append(reactionEvent)
+          break
+        }
+
         case 'add-channel': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.kind || !msg.name) break
 
           const kind = msg.kind === 'voice' ? 'voice' : 'text'
@@ -564,12 +661,13 @@ wss.on('connection', (ws) => {
         }
 
         case 'upload-file': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.fileName || !msg.dataBase64) break
 
           const channelId = msg.channelId || 'general'
+          const dmKey = msg.dmKey ? String(msg.dmKey) : null
           const senderHex = b4a.toString(identity.publicKey, 'hex')
-          const moderationError = await getModerationError(room, senderHex, channelId)
+          const moderationError = await getModerationError(room, senderHex, dmKey ? null : channelId)
           if (moderationError) {
             ws.send(JSON.stringify({ type: 'error', message: moderationError }))
             break
@@ -581,12 +679,12 @@ wss.on('connection', (ws) => {
           }
 
           const safeName = String(msg.fileName).replace(/[^a-zA-Z0-9._-]/g, '_')
-          const tempPath = join(os.tmpdir(), `neet-upload-${Date.now()}-${Math.random().toString(16).slice(2)}-${safeName}`)
+          const tempPath = join(os.tmpdir(), `quibble-upload-${Date.now()}-${Math.random().toString(16).slice(2)}-${safeName}`)
           const fileBuf = b4a.from(msg.dataBase64, 'base64')
 
           writeFileSync(tempPath, fileBuf)
           try {
-            await sendFile(tempPath, neet.store, room, identity, {
+            await sendFile(tempPath, quibble.store, room, identity, {
               channelId,
               threadRootId: msg.threadRootId ? String(msg.threadRootId) : null,
               dmKey: msg.dmKey ? String(msg.dmKey) : null,
@@ -599,7 +697,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'pin-message': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.messageId) break
           const senderHex = b4a.toString(identity.publicKey, 'hex')
           const moderationError = await getModerationError(room, senderHex, String(msg.channelId || 'general'))
@@ -617,7 +715,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'unpin-message': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.messageId) break
           const senderHex = b4a.toString(identity.publicKey, 'hex')
           const moderationError = await getModerationError(room, senderHex, String(msg.channelId || 'general'))
@@ -635,7 +733,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'friend-request': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.targetKey) break
           const senderHex = b4a.toString(identity.publicKey, 'hex')
           const moderationError = await getModerationError(room, senderHex)
@@ -654,7 +752,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'friend-accept': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.targetKey) break
           const senderHex = b4a.toString(identity.publicKey, 'hex')
           const moderationError = await getModerationError(room, senderHex)
@@ -672,7 +770,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'kick-user-channel': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.username || !msg.channelId) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -708,7 +806,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'ban-user': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.username) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -733,7 +831,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'unban-user': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.username) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -770,7 +868,7 @@ wss.on('connection', (ws) => {
         case 'download-file': {
           if (!msg.coreKey || !msg.fileName) break
           const key = b4a.from(msg.coreKey, 'hex')
-          const core = neet.store.get(key)
+          const core = quibble.store.get(key)
           await core.ready()
           if (core.length === 0) await core.update({ wait: true })
 
@@ -791,7 +889,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'add-custom-emoji': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.name || !msg.imageData) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -811,7 +909,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'remove-custom-emoji': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.name) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -829,7 +927,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'set-room-admins': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !Array.isArray(msg.admins)) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -866,7 +964,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'set-room-owner': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.owner) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -890,7 +988,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'disband-room': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
 
           const requesterHex = b4a.toString(identity.publicKey, 'hex')
@@ -906,85 +1004,101 @@ wss.on('connection', (ws) => {
         }
 
         case 'start-call': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.callId || !msg.mode) break
 
-          const channelId = msg.channelId || 'voice-general'
+          const channelId = msg.channelId || 'general'
+          const dmKey = msg.dmKey ? String(msg.dmKey) : null
+          const scope = String(msg.scope || (dmKey ? 'dm' : 'text'))
           const senderHex = b4a.toString(identity.publicKey, 'hex')
           const moderationError = await getModerationError(room, senderHex, channelId)
           if (moderationError) {
             ws.send(JSON.stringify({ type: 'error', message: moderationError }))
             break
           }
-          const modOnly = await channelIsModOnly(room, channelId)
-          if (modOnly && !(await isRoomAdmin(room, senderHex))) {
-            ws.send(JSON.stringify({ type: 'error', message: 'This channel is restricted to moderators/admins.' }))
-            break
+          if (!dmKey) {
+            const modOnly = await channelIsModOnly(room, channelId)
+            if (modOnly && !(await isRoomAdmin(room, senderHex))) {
+              ws.send(JSON.stringify({ type: 'error', message: 'This channel is restricted to moderators/admins.' }))
+              break
+            }
           }
 
           const startMsg = systemMsg('call-start', {
             callId: msg.callId,
             mode: msg.mode,
-            channelId
+            scope,
+            channelId,
+            dmKey,
+            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null
           }, identity)
           await room.append(startMsg)
           break
         }
 
         case 'join-call': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.callId) break
 
-          const channelId = msg.channelId || 'voice-general'
+          const channelId = msg.channelId || 'general'
+          const dmKey = msg.dmKey ? String(msg.dmKey) : null
+          const scope = String(msg.scope || (dmKey ? 'dm' : 'text'))
           const senderHex = b4a.toString(identity.publicKey, 'hex')
           const moderationError = await getModerationError(room, senderHex, channelId)
           if (moderationError) {
             ws.send(JSON.stringify({ type: 'error', message: moderationError }))
             break
           }
-          const modOnly = await channelIsModOnly(room, channelId)
-          if (modOnly && !(await isRoomAdmin(room, senderHex))) {
-            ws.send(JSON.stringify({ type: 'error', message: 'This channel is restricted to moderators/admins.' }))
-            break
+          if (!dmKey) {
+            const modOnly = await channelIsModOnly(room, channelId)
+            if (modOnly && !(await isRoomAdmin(room, senderHex))) {
+              ws.send(JSON.stringify({ type: 'error', message: 'This channel is restricted to moderators/admins.' }))
+              break
+            }
           }
 
           const joinMsg = systemMsg('call-join', {
             callId: msg.callId,
             mode: msg.mode || 'voice',
-            channelId
+            scope,
+            channelId,
+            dmKey,
+            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null
           }, identity)
           await room.append(joinMsg)
           break
         }
 
         case 'call-signal': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.callId || !msg.signal) break
 
           const signalMsg = systemMsg('call-signal', {
             callId: msg.callId,
             target: msg.target || null,
             signal: msg.signal,
-            channelId: msg.channelId || 'voice-general'
+            channelId: msg.channelId || 'general',
+            dmKey: msg.dmKey ? String(msg.dmKey) : null
           }, identity)
           await room.append(signalMsg)
           break
         }
 
         case 'end-call': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.callId) break
 
           const endMsg = systemMsg('call-end', {
             callId: msg.callId,
-            channelId: msg.channelId || 'voice-general'
+            channelId: msg.channelId || 'general',
+            dmKey: msg.dmKey ? String(msg.dmKey) : null
           }, identity)
           await room.append(endMsg)
           break
         }
 
         case 'start-voice': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
 
           const sessionId = b4a.toString(b4a.from(`${Date.now()}-${Math.random()}`), 'hex').slice(0, 24)
@@ -1004,7 +1118,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'join-voice': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.sessionId) break
 
           ensureVoiceSession(msg.sessionId, msg.roomKey)
@@ -1028,7 +1142,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'end-voice': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (room && msg.sessionId) {
             const vm = voiceMsg('end', msg.sessionId, identity)
             vm.channelId = msg.channelId || 'voice-general'
@@ -1039,7 +1153,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'start-video': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
 
           const sessionId = b4a.toString(b4a.from(`${Date.now()}-${Math.random()}`), 'hex').slice(0, 24)
@@ -1059,7 +1173,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'join-video': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.sessionId) break
 
           ensureVideoSession(msg.sessionId, msg.roomKey)
@@ -1083,7 +1197,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'end-video': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (room && msg.sessionId) {
             const vm = videoMsg('end', msg.sessionId, identity)
             vm.channelId = msg.channelId || 'voice-general'
@@ -1094,7 +1208,7 @@ wss.on('connection', (ws) => {
         }
 
         case 'get-history': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
 
           const limit = Math.max(1, Math.min(500, Number(msg.count) || 100))
@@ -1112,14 +1226,14 @@ wss.on('connection', (ws) => {
         }
 
         case 'watch-room': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
           startWatching(room, msg.roomKey, ws)
           break
         }
 
         case 'leave-room': {
-          const room = neet.rooms.get(msg.roomKey)
+          const room = quibble.rooms.get(msg.roomKey)
           if (room) {
             try {
               const leaveMsg = systemMsg('leave', { name: identity.name }, identity)
@@ -1129,7 +1243,7 @@ wss.on('connection', (ws) => {
           } else {
             unpersistRoom(msg.roomKey)
           }
-          await neet.leaveRoom(msg.roomKey)
+          await quibble.leaveRoom(msg.roomKey)
           stopWatching(msg.roomKey, ws)
           break
         }
@@ -1139,12 +1253,31 @@ wss.on('connection', (ws) => {
           scheduleLocalReset()
           break
         }
+
+        case 'download-seed-phrase': {
+          const phrase = await getSeedPhrase({ dir: identity.dir, name: identity.name || 'anon' })
+          const shortKey = b4a.toString(identity.publicKey, 'hex').slice(0, 12)
+          ws.send(JSON.stringify({
+            type: 'seed-phrase-download',
+            fileName: `quibble-seed-${shortKey}.txt`,
+            content: `${phrase}\n`
+          }))
+          break
+        }
+
+        case 'import-seed-phrase': {
+          const phrase = String(msg.seedPhrase || '')
+          await importSeedPhrase(phrase, { dir: identity.dir, name: identity.name || 'anon' })
+          ws.send(JSON.stringify({ type: 'seed-phrase-imported' }))
+          scheduleIdentityReload()
+          break
+        }
       }
     } catch (err) {
       const rawMessage = String(err?.message || 'Server error')
       if (rawMessage === 'Not writable') {
         const roomKey = msg?.roomKey ? String(msg.roomKey) : null
-        const room = roomKey ? neet.rooms.get(roomKey) : null
+        const room = roomKey ? quibble.rooms.get(roomKey) : null
         ws.send(JSON.stringify({
           type: 'room-permission',
           roomKey,
@@ -1269,7 +1402,7 @@ function stopWatching (keyHex, ws) {
 }
 
 // ─── Peer events ───
-neet.swarm.on('connection', (socket, info) => {
+quibble.swarm.on('connection', (socket, info) => {
   const peerKey = b4a.toString(info.publicKey, 'hex')
   broadcast({ type: 'peer-connected', peerKey })
 
@@ -1303,6 +1436,56 @@ async function findMessageById (room, messageId) {
   }
 }
 
+async function getLatestUserReactionState (room, { messageId, emoji, senderKey }) {
+  let beforeSeq = null
+  let active = false
+  let bestSeq = -1
+  let bestTimestamp = -1
+
+  while (true) {
+    const page = await room.historyPage({ limit: 500, beforeSeq })
+
+    for (const candidate of page.messages) {
+      if (!candidate || String(candidate.sender || '') !== senderKey) continue
+
+      let targetId = null
+      let reactionEmoji = null
+      let on = false
+
+      if (candidate.type === 'reaction') {
+        targetId = String(candidate.targetId || '')
+        reactionEmoji = String(candidate.emoji || '')
+        on = true
+      } else if (candidate.type === 'system' && candidate.action === 'message-reaction') {
+        targetId = String(candidate.data?.messageId || '')
+        reactionEmoji = String(candidate.data?.emoji || '')
+        on = candidate.data?.on !== false
+      } else {
+        continue
+      }
+
+      if (targetId !== messageId || reactionEmoji !== emoji) continue
+
+      const seq = Number.isInteger(candidate._seq) ? candidate._seq : null
+      const timestamp = Number(candidate.timestamp) || 0
+
+      if (seq != null) {
+        if (seq >= bestSeq) {
+          bestSeq = seq
+          bestTimestamp = timestamp
+          active = Boolean(on)
+        }
+      } else if (bestSeq < 0 && timestamp >= bestTimestamp) {
+        bestTimestamp = timestamp
+        active = Boolean(on)
+      }
+    }
+
+    if (page.nextBeforeSeq == null) return active
+    beforeSeq = page.nextBeforeSeq
+  }
+}
+
 function addVoiceClient (sessionId, ws) {
   if (!wsVoiceSessions.has(ws)) wsVoiceSessions.set(ws, new Set())
   wsVoiceSessions.get(ws).add(sessionId)
@@ -1324,7 +1507,7 @@ function ensureVoiceSession (sessionId, roomKey) {
   const session = voiceSessions.get(sessionId)
   session.roomKey = roomKey
 
-  for (const socket of neet.connections) {
+  for (const socket of quibble.connections) {
     attachVoiceSocket(sessionId, roomKey, socket)
   }
 }
@@ -1415,7 +1598,7 @@ function ensureVideoSession (sessionId, roomKey) {
   const session = videoSessions.get(sessionId)
   session.roomKey = roomKey
 
-  for (const socket of neet.connections) {
+  for (const socket of quibble.connections) {
     attachVideoSocket(sessionId, roomKey, socket)
   }
 }

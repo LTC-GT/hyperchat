@@ -15,7 +15,7 @@ yarn-error.log*
 storage/
 test-storage/
 **/storage-*/
-.neet-store/
+.quibble-store/
 
 # GPG keys (DO NOT COMMIT)
 *.asc

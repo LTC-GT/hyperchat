@@ -23,7 +23,7 @@
     position: sticky;
     top: 0;
     z-index: 20;
-    background: var(--color-discord-bg, #313338);
+    background: var(--color-quibble-bg, #313338);
   }
 
   body.mobile-ui #chatMain .ml-auto {
@@ -142,6 +142,6 @@
     inset: 0;
     width: 100%;
     z-index: 52;
-    background: var(--color-discord-bg, #313338);
+    background: var(--color-quibble-bg, #313338);
   }
 }

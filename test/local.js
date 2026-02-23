@@ -18,7 +18,7 @@ import path from 'node:path'
 import os from 'node:os'
 import b4a from 'b4a'
 
-import { Neet } from '../lib/neet.js'
+import { Quibble } from '../lib/quibble.js'
 import { textMsg, systemMsg } from '../lib/messages.js'
 import { sendFile, recvFile } from '../lib/file-transfer.js'
 
@@ -58,14 +58,14 @@ console.log(`Storage: ${TMP}\n`)
 const testnet = await createTestnet(3)
 const bootstrap = testnet.bootstrap
 
-const alice = new Neet({
+const alice = new Quibble({
   storage: path.join(ALICE_DIR, 'store'),
   identity: { publicKey: b4a.alloc(32, 1), secretKey: b4a.alloc(64, 1), name: 'Alice' },
   swarmOpts: { bootstrap }
 })
 await alice.ready()
 
-const bob = new Neet({
+const bob = new Quibble({
   storage: path.join(BOB_DIR, 'store'),
   identity: { publicKey: b4a.alloc(32, 2), secretKey: b4a.alloc(64, 2), name: 'Bob' },
   swarmOpts: { bootstrap }
@@ -78,7 +78,7 @@ console.log('1. Room creation')
 const aliceRoom = await alice.createRoom()
 
 assert(aliceRoom.key !== null, 'Room has a key')
-assert(aliceRoom.inviteLink.startsWith('pear://neet/'), 'Invite link format correct')
+assert(aliceRoom.inviteLink.startsWith('pear://quibble/'), 'Invite link format correct')
 assert(aliceRoom.writable === true, 'Creator is writable')
 assert(aliceRoom.isIndexer === true, 'Creator is indexer')
 console.log(`   Link: ${aliceRoom.inviteLink}\n`)

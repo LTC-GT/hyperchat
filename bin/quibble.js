@@ -5,7 +5,7 @@
  *
  * Usage:
  *   quibble create                  – create a new room, print invite link
- *   quibble join <link>             – join a room by pear://neet/... link
+ *   quibble join <link>             – join a room by pear://quibble/... link
  *   quibble id                      – show your identity
  *   quibble name <name>             – set display name
  *
@@ -28,7 +28,7 @@ import b4a from 'b4a'
 import chalk from 'chalk'
 
 import { loadIdentity, setName } from '../lib/identity.js'
-import { Neet } from '../lib/neet.js'
+import { Quibble } from '../lib/quibble.js'
 import { textMsg, systemMsg } from '../lib/messages.js'
 import { sendFile, recvFile } from '../lib/file-transfer.js'
 
@@ -40,7 +40,7 @@ if (!cmd || cmd === '--help' || cmd === '-h') {
 ${chalk.bold('Quibble')} – P2P CLI chat
 
   ${chalk.cyan('quibble create')}           Create a new room
-  ${chalk.cyan('quibble join <link>')}      Join by pear://neet/... link or hex key
+  ${chalk.cyan('quibble join <link>')}      Join by pear://quibble/... link or hex key
   ${chalk.cyan('quibble id')}               Show your identity
   ${chalk.cyan('quibble name <name>')}      Set your display name
 `)
@@ -50,7 +50,7 @@ ${chalk.bold('Quibble')} – P2P CLI chat
 // ── Identity commands ───
 
 if (cmd === 'id') {
-  const id = loadIdentity()
+  const id = await loadIdentity()
   console.log(`${chalk.bold('Name:')}  ${id.name}`)
   console.log(`${chalk.bold('Key:')}   ${b4a.toString(id.publicKey, 'hex')}`)
   process.exit(0)
@@ -59,24 +59,24 @@ if (cmd === 'id') {
 if (cmd === 'name') {
   const name = args.slice(1).join(' ')
   if (!name) { console.error('Usage: quibble name <display name>'); process.exit(1) }
-  loadIdentity() // ensure identity exists
-  setName(name)
+  await loadIdentity() // ensure identity exists
+  await setName(name)
   console.log(`Display name set to ${chalk.green(name)}`)
   process.exit(0)
 }
 
 // ── Room commands ───
 
-const identity = loadIdentity()
+const identity = await loadIdentity()
 const storageDir = path.join(identity.dir, 'storage')
 
-const neet = new Neet({ storage: storageDir, identity })
-await neet.ready()
+const quibble = new Quibble({ storage: storageDir, identity })
+await quibble.ready()
 
 let room
 
 if (cmd === 'create') {
-  room = await neet.createRoom()
+  room = await quibble.createRoom()
   console.log(chalk.green.bold('\n✦ Room created'))
   console.log(`  ${chalk.bold('Link:')} ${room.inviteLink}`)
   console.log(`  ${chalk.dim('Share this link with others so they can join.\n')}`)
@@ -84,7 +84,7 @@ if (cmd === 'create') {
   const target = args[1]
   if (!target) { console.error('Usage: quibble join <link|hexKey>'); process.exit(1) }
   console.log(chalk.yellow('Joining room…'))
-  room = await neet.joinRoom(target)
+  room = await quibble.joinRoom(target)
   console.log(chalk.green.bold('✦ Joined room'))
   console.log(`  ${chalk.bold('Link:')} ${room.inviteLink}\n`)
 } else {
@@ -94,7 +94,7 @@ if (cmd === 'create') {
 
 // ── Connection logging ───
 
-neet.swarm.on('connection', (_socket, info) => {
+quibble.swarm.on('connection', (_socket, info) => {
   const short = b4a.toString(info.publicKey, 'hex').slice(0, 12)
   console.log(chalk.dim(`  ↔ peer connected: ${short}…`))
 })
@@ -132,14 +132,14 @@ rl.on('line', async (line) => {
 
 rl.on('close', async () => {
   stopWatch()
-  await neet.destroy()
+  await quibble.destroy()
   process.exit(0)
 })
 
 process.on('SIGINT', async () => {
   console.log(chalk.dim('\nShutting down…'))
   stopWatch()
-  await neet.destroy()
+  await quibble.destroy()
   process.exit(0)
 })
 
@@ -154,7 +154,7 @@ async function handleCommand (input) {
       const filePath = parts.slice(1).join(' ')
       if (!filePath) { console.log('Usage: /send <path>'); return }
       console.log(chalk.dim(`Sharing ${filePath}…`))
-      const msg = await sendFile(filePath, neet.store, room, identity)
+      const msg = await sendFile(filePath, quibble.store, room, identity)
       console.log(chalk.green(`✓ Shared: ${msg.filename} (${fmtSize(msg.size)})`))
       break
     }
@@ -167,7 +167,7 @@ async function handleCommand (input) {
       const fileMsg = msgs.find(m => m.type === 'file' && m.id === msgId)
       if (!fileMsg) { console.log('File message not found'); return }
       console.log(chalk.dim(`Downloading ${fileMsg.filename}…`))
-      const dest = await recvFile(fileMsg, neet.store, destDir)
+      const dest = await recvFile(fileMsg, quibble.store, destDir)
       console.log(chalk.green(`✓ Saved to ${dest}`))
       break
     }
@@ -181,9 +181,9 @@ async function handleCommand (input) {
     }
 
     case 'peers': {
-      const n = neet.connections.size
+      const n = quibble.connections.size
       console.log(`${chalk.bold('Peers:')} ${n}`)
-      for (const conn of neet.connections) {
+      for (const conn of quibble.connections) {
         const pk = conn.remotePublicKey ? b4a.toString(conn.remotePublicKey, 'hex').slice(0, 16) : '???'
         console.log(`  • ${pk}…`)
       }
@@ -210,7 +210,7 @@ async function handleCommand (input) {
     case 'quit':
     case 'exit':
       stopWatch()
-      await neet.destroy()
+      await quibble.destroy()
       process.exit(0)
 
     default:

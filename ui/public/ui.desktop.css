@@ -1,3 +1,77 @@
 .mobile-only {
   display: none;
 }
+
+@media (min-width: 1024px) {
+  #setupModal,
+  #seedBackupModal,
+  #roomModal,
+  #inviteModal,
+  #usernameConflictModal,
+  #userSettingsModal,
+  #adminModal,
+  #appDialogModal {
+    padding: 24px;
+  }
+
+  #setupModal > div,
+  #seedBackupModal > div,
+  #roomModal > div,
+  #inviteModal > div,
+  #usernameConflictModal > div,
+  #appDialogModal > div {
+    width: min(640px, calc(100vw - 48px));
+    max-width: min(640px, calc(100vw - 48px));
+    margin: 0 auto;
+  }
+
+  #userSettingsModal > div {
+    width: min(1120px, calc(100vw - 48px));
+    max-width: min(1120px, calc(100vw - 48px));
+    margin: 0 auto;
+  }
+
+  #adminModal > div {
+    width: min(1280px, calc(100vw - 48px));
+    max-width: min(1280px, calc(100vw - 48px));
+    margin: 0 auto;
+  }
+}
+
+#callStage #videoGrid {
+  align-items: stretch;
+}
+
+#callStage #videoGrid video {
+  width: 100%;
+  height: 220px;
+  max-height: 35vh;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+#callStage.call-stage-expanded,
+#callStage:fullscreen {
+  display: flex !important;
+  flex-direction: column;
+  padding: 12px;
+  gap: 10px;
+  height: 100vh;
+  border: 0;
+  background: var(--color-quibble-bg, #313338);
+}
+
+#callStage.call-stage-expanded #videoGrid,
+#callStage:fullscreen #videoGrid {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+#callStage.call-stage-expanded #videoGrid video,
+#callStage:fullscreen #videoGrid video {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+}

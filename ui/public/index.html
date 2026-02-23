@@ -10,15 +10,15 @@
   <link rel="stylesheet" href="ui.desktop.css">
   <link rel="stylesheet" href="ui.mobile.css">
 </head>
-<body class="h-full bg-discord-bg text-discord-text overflow-hidden select-none">
+<body class="h-full bg-quibble-bg text-quibble-text overflow-hidden select-none">
 
-  <div id="connectionGate" class="fixed inset-0 z-[90] flex items-center justify-center bg-discord-overlay">
-    <div class="bg-discord-modal border border-discord-divider rounded-xl px-8 py-7 w-full max-w-sm text-center shadow-2xl">
-      <div class="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-discord-active border-t-discord-blurple animate-spin"></div>
+  <div id="connectionGate" class="fixed inset-0 z-[90] flex items-center justify-center bg-quibble-overlay">
+    <div class="bg-quibble-modal border border-quibble-divider rounded-xl px-8 py-7 w-full max-w-sm text-center shadow-2xl">
+      <div class="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-quibble-active border-t-quibble-blurple animate-spin"></div>
       <h2 class="text-xl font-semibold mb-1" id="connectionGateTitle">Connecting…</h2>
-      <p class="text-sm text-discord-text-s" id="connectionGateDetail">Waiting for DAT/DHT peers and room sync</p>
-      <div class="mt-4 h-1.5 bg-discord-serverbar rounded-full overflow-hidden">
-        <div class="h-full w-1/2 bg-discord-blurple animate-pulse"></div>
+      <p class="text-sm text-quibble-text-s" id="connectionGateDetail">Waiting for DAT/DHT peers and room sync</p>
+      <div class="mt-4 h-1.5 bg-quibble-serverbar rounded-full overflow-hidden">
+        <div class="h-full w-1/2 bg-quibble-blurple animate-pulse"></div>
       </div>
     </div>
   </div>
@@ -26,20 +26,20 @@
   <!-- ═══════════════════════════════════════════════ -->
   <!--  SETUP MODAL (first-run)                       -->
   <!-- ═══════════════════════════════════════════════ -->
-  <div id="setupModal" class="fixed inset-0 z-50 flex items-center justify-center bg-discord-overlay hidden">
-    <div class="bg-discord-modal rounded-lg shadow-2xl w-full max-w-md p-8 text-center fade-in">
+  <div id="setupModal" class="fixed inset-0 z-50 flex items-center justify-center bg-quibble-overlay hidden">
+    <div class="bg-quibble-modal rounded-lg shadow-2xl w-full max-w-md p-8 text-center fade-in">
       <div class="mb-2">
-        <svg class="mx-auto w-10 h-10 text-discord-blurple" fill="currentColor" viewBox="0 0 24 24">
+        <svg class="mx-auto w-10 h-10 text-quibble-blurple" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.22.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
         </svg>
       </div>
       <h2 class="text-2xl font-bold mb-1">Welcome to Quibble</h2>
-      <p class="text-discord-text-s text-sm mb-6">Set up your profile to get started with P2P chat</p>
+      <p class="text-quibble-text-s text-sm mb-6">Set up your profile to get started with P2P chat</p>
 
       <!-- Avatar picker -->
       <div class="mb-6 flex justify-center">
         <label class="relative cursor-pointer group" for="avatarInput">
-          <div id="avatarPreview" class="w-20 h-20 rounded-full bg-discord-blurple flex items-center justify-center text-3xl font-bold overflow-hidden">
+          <div id="avatarPreview" class="w-20 h-20 rounded-full bg-quibble-blurple flex items-center justify-center text-3xl font-bold overflow-hidden">
             ?
           </div>
           <div class="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -51,63 +51,80 @@
           <input type="file" id="avatarInput" accept="image/*" class="hidden">
         </label>
       </div>
-      <p class="text-discord-text-m text-xs mb-4">Click to upload a profile picture</p>
+      <p class="text-quibble-text-m text-xs mb-4">Click to upload a profile picture</p>
 
       <div class="mb-3 text-left">
-        <label class="text-xs font-bold uppercase text-discord-text-s tracking-wide mb-2 block">Full Name</label>
+        <label class="text-xs font-bold uppercase text-quibble-text-s tracking-wide mb-2 block">Full Name</label>
         <input id="setupFullName" type="text" maxlength="48" placeholder="Enter your full name"
-          class="w-full bg-discord-serverbar border-none rounded px-3 py-2.5 text-discord-text placeholder-discord-text-m focus:outline-none focus:ring-2 focus:ring-discord-blurple text-sm">
+          class="w-full bg-quibble-serverbar border-none rounded px-3 py-2.5 text-quibble-text placeholder-quibble-text-m focus:outline-none focus:ring-2 focus:ring-quibble-blurple text-sm">
       </div>
 
       <div class="mb-6 text-left">
-        <label class="text-xs font-bold uppercase text-discord-text-s tracking-wide mb-2 block">Username (@handle)</label>
+        <label class="text-xs font-bold uppercase text-quibble-text-s tracking-wide mb-2 block">Username (@handle)</label>
         <input id="setupUsername" type="text" maxlength="24" placeholder="e.g. alex"
-          class="w-full bg-discord-serverbar border-none rounded px-3 py-2.5 text-discord-text placeholder-discord-text-m focus:outline-none focus:ring-2 focus:ring-discord-blurple text-sm">
-        <p class="text-[11px] text-discord-text-m mt-1">This will be the default username you join servers with.</p>
+          class="w-full bg-quibble-serverbar border-none rounded px-3 py-2.5 text-quibble-text placeholder-quibble-text-m focus:outline-none focus:ring-2 focus:ring-quibble-blurple text-sm">
+        <p class="text-[11px] text-quibble-text-m mt-1">This will be the default username you join servers with.</p>
       </div>
 
       <button id="setupSubmit"
-        class="w-full bg-discord-blurple hover:bg-discord-blurple-h text-white font-medium py-2.5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+        class="w-full bg-quibble-blurple hover:bg-quibble-blurple-h text-white font-medium py-2.5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         disabled>
         Get Started
       </button>
     </div>
   </div>
 
+  <div id="seedBackupModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-quibble-overlay hidden">
+    <div class="bg-quibble-modal rounded-lg shadow-2xl w-full max-w-lg p-6 fade-in">
+      <h2 class="text-xl font-bold mb-1">Backup Your Identity</h2>
+      <p class="text-quibble-text-s text-sm mb-4">Save this 24-word seed phrase. It lets you use the same Quibble identity on another device.</p>
+
+      <div class="rounded-md bg-quibble-serverbar px-3 py-2 mb-4">
+        <p class="text-[11px] uppercase tracking-wide text-quibble-text-m mb-1">24-word seed phrase</p>
+        <pre id="seedPhraseText" class="text-xs text-quibble-text leading-relaxed break-words whitespace-pre-wrap font-mono"></pre>
+      </div>
+
+      <div class="flex items-center justify-end gap-2">
+        <button id="btnSeedBackupCopy" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Copy Seed Phrase</button>
+        <button id="btnSeedBackupContinue" class="bg-quibble-blurple hover:bg-quibble-blurple-h text-white text-sm px-3 py-2 rounded">Continue</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════════════════════════════════════════════ -->
   <!--  CREATE / JOIN ROOM MODAL                      -->
   <!-- ═══════════════════════════════════════════════ -->
-  <div id="roomModal" class="fixed inset-0 z-50 flex items-center justify-center bg-discord-overlay hidden">
-    <div class="bg-discord-modal rounded-lg shadow-2xl w-full max-w-md overflow-hidden fade-in">
+  <div id="roomModal" class="fixed inset-0 z-50 flex items-center justify-center bg-quibble-overlay hidden">
+    <div class="bg-quibble-modal rounded-lg shadow-2xl w-full max-w-md overflow-hidden fade-in">
       <div id="roomModalStepPick" class="p-6 text-center">
         <h2 class="text-2xl font-bold mb-1">Create or Join a Room</h2>
-        <p class="text-discord-text-s text-sm mb-6">Rooms are encrypted P2P spaces — no servers involved</p>
+        <p class="text-quibble-text-s text-sm mb-6">Rooms are encrypted P2P spaces — no servers involved</p>
 
         <!-- Create -->
         <button id="btnCreateRoom"
-          class="w-full bg-discord-serverbar hover:bg-discord-hover rounded-lg p-4 mb-3 flex items-center text-left transition-colors group">
-          <div class="w-12 h-12 rounded-full bg-discord-blurple flex items-center justify-center mr-4 flex-shrink-0">
+          class="w-full bg-quibble-serverbar hover:bg-quibble-hover rounded-lg p-4 mb-3 flex items-center text-left transition-colors group">
+          <div class="w-12 h-12 rounded-full bg-quibble-blurple flex items-center justify-center mr-4 flex-shrink-0">
             <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
           </div>
           <div>
-            <p class="font-semibold text-discord-text group-hover:text-white">Create a Room</p>
-            <p class="text-xs text-discord-text-m">Start a new P2P room and invite friends</p>
+            <p class="font-semibold text-quibble-text group-hover:text-white">Create a Room</p>
+            <p class="text-xs text-quibble-text-m">Start a new P2P room and invite friends</p>
           </div>
-          <svg class="w-5 h-5 ml-auto text-discord-text-m" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5 ml-auto text-quibble-text-m" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
           </svg>
         </button>
 
         <!-- Join -->
-        <div class="w-full bg-discord-serverbar rounded-lg p-4">
-          <p class="font-semibold text-discord-text text-left mb-3">Join a Room</p>
+        <div class="w-full bg-quibble-serverbar rounded-lg p-4">
+          <p class="font-semibold text-quibble-text text-left mb-3">Join a Room</p>
           <div class="flex gap-2">
-            <input id="joinLinkInput" type="text" placeholder="Paste invite link or hex key"
-              class="flex-1 bg-discord-bg border-none rounded px-3 py-2 text-discord-text placeholder-discord-text-m focus:outline-none focus:ring-2 focus:ring-discord-blurple text-sm">
+            <input id="joinLinkInput" type="text" placeholder="Paste pear/quibble link here"
+              class="flex-1 bg-quibble-bg border-none rounded px-3 py-2 text-quibble-text placeholder-quibble-text-m focus:outline-none focus:ring-2 focus:ring-quibble-blurple text-sm">
             <button id="btnJoinRoom"
-              class="bg-discord-blurple hover:bg-discord-blurple-h text-white font-medium px-4 py-2 rounded transition-colors text-sm disabled:opacity-50"
+              class="bg-quibble-blurple hover:bg-quibble-blurple-h text-white font-medium px-4 py-2 rounded transition-colors text-sm disabled:opacity-50"
               disabled>
               Join
             </button>
@@ -117,33 +134,33 @@
 
       <div id="roomModalStepCreate" class="hidden p-6">
         <h2 class="text-2xl font-bold mb-1 text-center">Customize Server</h2>
-        <p class="text-discord-text-s text-sm mb-5 text-center">Pick a server icon and name before creating</p>
+        <p class="text-quibble-text-s text-sm mb-5 text-center">Pick a server icon and name before creating</p>
 
-        <div class="bg-discord-serverbar rounded-lg p-4">
-          <p class="text-xs uppercase tracking-wide text-discord-text-m mb-2">Server Icon</p>
+        <div class="bg-quibble-serverbar rounded-lg p-4">
+          <p class="text-xs uppercase tracking-wide text-quibble-text-m mb-2">Server Icon</p>
           <div class="flex items-center gap-3 mb-4">
-            <div id="createRoomIconPreview" class="w-12 h-12 rounded-full bg-discord-blurple flex items-center justify-center text-2xl font-semibold overflow-hidden">😀</div>
+            <div id="createRoomIconPreview" class="w-12 h-12 rounded-full bg-quibble-blurple flex items-center justify-center text-2xl font-semibold overflow-hidden">😀</div>
             <div class="flex gap-2">
-              <button id="btnCreateRoomUploadIcon" class="bg-discord-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Upload</button>
-              <button id="btnCreateRoomRandomEmoji" class="bg-discord-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Random Emoji</button>
+              <button id="btnCreateRoomUploadIcon" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Upload</button>
+              <button id="btnCreateRoomRandomEmoji" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Random Emoji</button>
             </div>
           </div>
 
-          <p class="text-xs uppercase tracking-wide text-discord-text-m mb-2">Server Name</p>
+          <p class="text-xs uppercase tracking-wide text-quibble-text-m mb-2">Server Name</p>
           <input id="createRoomNameInput" type="text" maxlength="48" placeholder="My Server"
-            class="w-full bg-discord-bg border-none rounded px-3 py-2 text-discord-text placeholder-discord-text-m focus:outline-none focus:ring-2 focus:ring-discord-blurple text-sm">
+            class="w-full bg-quibble-bg border-none rounded px-3 py-2 text-quibble-text placeholder-quibble-text-m focus:outline-none focus:ring-2 focus:ring-quibble-blurple text-sm">
         </div>
 
         <input id="createRoomIconInput" type="file" accept="image/*" class="hidden">
       </div>
 
-      <div id="roomModalFooterPick" class="bg-discord-serverbar px-6 py-4 flex justify-end">
-        <button id="btnCloseRoomModal" class="text-sm text-discord-text-s hover:text-white transition-colors">Cancel</button>
+      <div id="roomModalFooterPick" class="bg-quibble-serverbar px-6 py-4 flex justify-end">
+        <button id="btnCloseRoomModal" class="text-sm text-quibble-text-s hover:text-white transition-colors">Cancel</button>
       </div>
 
-      <div id="roomModalFooterCreate" class="hidden bg-discord-serverbar px-6 py-4 flex items-center justify-between">
-        <button id="btnCreateRoomBack" class="text-sm text-discord-text-s hover:text-white transition-colors">Back</button>
-        <button id="btnCreateRoomContinue" class="bg-discord-green hover:opacity-90 text-white text-sm px-4 py-2 rounded">Continue</button>
+      <div id="roomModalFooterCreate" class="hidden bg-quibble-serverbar px-6 py-4 flex items-center justify-between">
+        <button id="btnCreateRoomBack" class="text-sm text-quibble-text-s hover:text-white transition-colors">Back</button>
+        <button id="btnCreateRoomContinue" class="bg-quibble-green hover:opacity-90 text-white text-sm px-4 py-2 rounded">Continue</button>
       </div>
     </div>
   </div>
@@ -151,20 +168,20 @@
   <!-- ═══════════════════════════════════════════════ -->
   <!--  INVITE LINK MODAL                             -->
   <!-- ═══════════════════════════════════════════════ -->
-  <div id="inviteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-discord-overlay hidden">
-    <div class="bg-discord-modal rounded-lg shadow-2xl w-full max-w-md p-6 fade-in">
+  <div id="inviteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-quibble-overlay hidden">
+    <div class="bg-quibble-modal rounded-lg shadow-2xl w-full max-w-md p-6 fade-in">
       <h2 class="text-xl font-bold mb-1">Invite Friends</h2>
-      <p class="text-discord-text-s text-sm mb-4">Share this link with others to join your room</p>
+      <p class="text-quibble-text-s text-sm mb-4">Share this link with others to join your room</p>
       <div class="flex gap-2">
         <input id="inviteLinkDisplay" type="text" readonly
-          class="flex-1 bg-discord-serverbar rounded px-3 py-2 text-discord-text text-sm focus:outline-none font-mono">
+          class="flex-1 bg-quibble-serverbar rounded px-3 py-2 text-quibble-text text-sm focus:outline-none font-mono">
         <button id="btnCopyInvite"
-          class="bg-discord-blurple hover:bg-discord-blurple-h text-white font-medium px-4 py-2 rounded transition-colors text-sm">
+          class="bg-quibble-blurple hover:bg-quibble-blurple-h text-white font-medium px-4 py-2 rounded transition-colors text-sm">
           Copy
         </button>
       </div>
       <div class="mt-4 flex justify-end">
-        <button id="btnCloseInviteModal" class="text-sm text-discord-text-s hover:text-white transition-colors">Close</button>
+        <button id="btnCloseInviteModal" class="text-sm text-quibble-text-s hover:text-white transition-colors">Close</button>
       </div>
     </div>
   </div>
@@ -176,16 +193,16 @@
     <div id="mobileDrawerBackdrop" class="hidden fixed inset-0 z-30 bg-black/60"></div>
 
     <!-- ── Server bar (far left) ── -->
-    <div id="serverRail" class="w-[72px] bg-discord-serverbar flex flex-col items-center py-3 gap-2 flex-shrink-0 overflow-y-auto">
+    <div id="serverRail" class="w-[72px] bg-quibble-serverbar flex flex-col items-center py-3 gap-2 flex-shrink-0 overflow-y-auto">
       <!-- Home button -->
       <div class="relative group mb-1">
         <div class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-1 h-5 bg-white rounded-r-full server-pill opacity-0 group-hover:opacity-100"></div>
-        <button id="btnHome" class="server-icon w-12 h-12 rounded-[50%] bg-discord-bg hover:bg-discord-blurple flex items-center justify-center transition-all" title="Home">
+        <button id="btnHome" class="server-icon w-12 h-12 rounded-[50%] bg-quibble-bg hover:bg-quibble-blurple flex items-center justify-center transition-all" title="Home">
           <img src="mascot_icon.webp" alt="Quibble" class="w-9 h-9 object-contain">
         </button>
       </div>
 
-      <div class="w-8 h-0.5 bg-discord-divider rounded-full mb-1"></div>
+      <div class="w-8 h-0.5 bg-quibble-divider rounded-full mb-1"></div>
 
       <!-- Room list -->
       <div id="serverList" class="flex flex-col items-center gap-2">
@@ -195,8 +212,8 @@
       <!-- Add room button -->
       <div class="relative group">
         <div class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-1 h-5 bg-white rounded-r-full server-pill opacity-0 group-hover:opacity-100"></div>
-        <button id="btnAddRoom" class="server-icon w-12 h-12 rounded-[50%] bg-discord-bg hover:bg-discord-green flex items-center justify-center transition-all" title="Add a Room">
-          <svg class="w-6 h-6 text-discord-green group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button id="btnAddRoom" class="server-icon w-12 h-12 rounded-[50%] bg-quibble-bg hover:bg-quibble-green flex items-center justify-center transition-all" title="Add a Room">
+          <svg class="w-6 h-6 text-quibble-green group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
           </svg>
         </button>
@@ -204,9 +221,9 @@
     </div>
 
     <!-- ── Channel sidebar ── -->
-    <div id="channelSidebar" class="w-60 bg-discord-sidebar flex flex-col flex-shrink-0">
+    <div id="channelSidebar" class="w-60 bg-quibble-sidebar flex flex-col flex-shrink-0">
       <!-- Room header -->
-      <div id="channelHeader" class="h-12 px-4 flex items-center shadow-md border-b border-black/20 cursor-pointer hover:bg-discord-hover transition-colors">
+      <div id="channelHeader" class="h-12 px-4 flex items-center shadow-md border-b border-black/20 cursor-pointer hover:bg-quibble-hover transition-colors">
         <h2 class="font-semibold text-[15px] truncate" id="roomTitle">Friends</h2>
       </div>
 
@@ -215,36 +232,36 @@
         <div id="channelList">
           <!-- Empty state -->
           <div id="noRoomSelected" class="px-2 pt-2 pb-4">
-            <button class="w-full flex items-center gap-2 px-2 py-2 rounded bg-discord-active text-discord-text text-sm font-medium">
-              <svg class="w-4 h-4 text-discord-text-m" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button class="w-full flex items-center gap-2 px-2 py-2 rounded bg-quibble-active text-quibble-text text-sm font-medium">
+              <svg class="w-4 h-4 text-quibble-text-m" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5V4H2v16h5m10 0v-2a3 3 0 00-3-3H10a3 3 0 00-3 3v2m10 0H7m10-9a3 3 0 11-6 0 3 3 0 016 0z"/>
               </svg>
               Friends
             </button>
 
-            <div class="mt-4 bg-discord-serverbar rounded p-3">
+            <div class="mt-4 bg-quibble-serverbar rounded p-3">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-xs font-bold uppercase text-discord-text-m tracking-wide">Friend Requests</h4>
-                <span id="friendRequestCount" class="text-xs text-discord-text-m">0</span>
+                <h4 class="text-xs font-bold uppercase text-quibble-text-m tracking-wide">Friend Requests</h4>
+                <span id="friendRequestCount" class="text-xs text-quibble-text-m">0</span>
               </div>
               <div id="friendRequestList" class="space-y-2 text-sm"></div>
             </div>
 
-            <div class="mt-3 bg-discord-serverbar rounded p-3">
-              <h4 class="text-xs font-bold uppercase text-discord-text-m tracking-wide mb-2">Friends / DMs</h4>
+            <div class="mt-3 bg-quibble-serverbar rounded p-3">
+              <h4 class="text-xs font-bold uppercase text-quibble-text-m tracking-wide mb-2">Friends / DMs</h4>
               <div id="friendList" class="space-y-2 text-sm"></div>
             </div>
           </div>
           <div id="channelItems" class="hidden">
             <div class="flex items-center justify-between px-1 mb-1">
-              <p class="text-xs font-bold uppercase text-discord-text-m tracking-wide">Text Channels</p>
-              <button id="btnAddTextChannel" class="text-discord-text-m hover:text-discord-text text-sm font-bold" title="Create Text Channel">+</button>
+              <p class="text-xs font-bold uppercase text-quibble-text-m tracking-wide">Text Channels</p>
+              <button id="btnAddTextChannel" class="text-quibble-text-m hover:text-quibble-text text-sm font-bold" title="Create Text Channel">+</button>
             </div>
             <div id="textChannelList" class="space-y-0.5"></div>
 
             <div class="flex items-center justify-between px-1 mb-1 mt-4">
-              <p class="text-xs font-bold uppercase text-discord-text-m tracking-wide">Voice Channels</p>
-              <button id="btnAddVoiceChannel" class="text-discord-text-m hover:text-discord-text text-sm font-bold" title="Create Voice Channel">+</button>
+              <p class="text-xs font-bold uppercase text-quibble-text-m tracking-wide">Voice Channels</p>
+              <button id="btnAddVoiceChannel" class="text-quibble-text-m hover:text-quibble-text text-sm font-bold" title="Create Voice Channel">+</button>
             </div>
             <div id="voiceChannelList" class="space-y-0.5"></div>
           </div>
@@ -252,48 +269,45 @@
       </div>
 
       <!-- User panel -->
-      <div id="btnProfileQuick" class="relative h-[56px] bg-discord-serverbar/50 px-2 flex items-center gap-1.5 cursor-pointer hover:bg-discord-hover transition-colors">
+      <div id="btnProfileQuick" class="relative h-[56px] bg-quibble-serverbar/50 px-2 flex items-center gap-1.5 cursor-pointer hover:bg-quibble-hover transition-colors">
         <div class="relative flex-shrink-0" style="width: 24px; height: 24px;">
-          <button id="btnAvatarStatus" class="rounded-full bg-discord-blurple flex items-center justify-center text-sm font-bold overflow-hidden flex-shrink-0" style="width: 24px; height: 24px; min-width: 24px; min-height: 24px;" title="Set status">
+          <button id="btnAvatarStatus" class="rounded-full bg-quibble-blurple flex items-center justify-center text-sm font-bold overflow-hidden flex-shrink-0" style="width: 24px; height: 24px; min-width: 24px; min-height: 24px;" title="Presence info">
             <div id="userAvatar" class="w-full h-full flex items-center justify-center">
               ?
             </div>
           </button>
-          <div id="userStatusDot" class="absolute bg-discord-green rounded-full border-2 border-discord-serverbar" style="width: 10px; height: 10px; right: -2px; bottom: -2px;"></div>
+          <div id="userStatusDot" class="absolute bg-quibble-green rounded-full border-2 border-quibble-serverbar" style="width: 10px; height: 10px; right: -2px; bottom: -2px;"></div>
 
-          <div id="userStatusMenu" class="hidden w-36 bg-discord-serverbar border border-discord-divider rounded-md p-1 shadow-xl z-50">
-            <button class="status-option w-full text-left px-2 py-1.5 rounded hover:bg-discord-hover text-xs" data-status="online">Online</button>
-            <button class="status-option w-full text-left px-2 py-1.5 rounded hover:bg-discord-hover text-xs" data-status="idle">Idle</button>
-            <button class="status-option w-full text-left px-2 py-1.5 rounded hover:bg-discord-hover text-xs" data-status="dnd">Do Not Disturb</button>
-            <button class="status-option w-full text-left px-2 py-1.5 rounded hover:bg-discord-hover text-xs" data-status="invisible">Invisible</button>
-            <button class="status-option w-full text-left px-2 py-1.5 rounded hover:bg-discord-hover text-xs" data-status="offline">Offline</button>
+          <div id="userStatusMenu" class="hidden w-44 bg-quibble-serverbar border border-quibble-divider rounded-md p-2 shadow-xl z-50">
+            <p class="text-[11px] uppercase tracking-wide text-quibble-text-m mb-1">Presence</p>
+            <p class="text-xs text-quibble-text-s leading-relaxed">Status is automatic: <span class="text-quibble-text">Active</span> while interacting, then <span class="text-quibble-text">Away</span> after 10 minutes.</p>
           </div>
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium truncate leading-tight" id="userNameDisplay">Loading…</p>
-          <p class="text-[10px] text-discord-text-m truncate leading-tight" id="userHandleDisplay">@loading • Online</p>
+          <p class="text-[10px] text-quibble-text-m truncate leading-tight" id="userHandleDisplay">@loading</p>
         </div>
         <div class="flex items-center gap-1 flex-shrink-0">
-          <button id="btnToggleMicGlobal" class="p-1 rounded hover:bg-discord-active text-discord-text-m hover:text-discord-text transition-colors" title="Toggle Microphone">
+          <button id="btnToggleMicGlobal" class="p-1 rounded hover:bg-quibble-active text-quibble-text-m hover:text-quibble-text transition-colors" title="Toggle Microphone">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1v10m0 0a3 3 0 003-3V4a3 3 0 00-6 0v4a3 3 0 003 3zm-7 0a7 7 0 0014 0M9 21h6"/>
               <path id="micDisabledSlash" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4l16 16"/>
             </svg>
           </button>
-          <button id="btnToggleCameraGlobal" class="p-1 rounded hover:bg-discord-active text-discord-text-m hover:text-discord-text transition-colors" title="Toggle Camera">
+          <button id="btnToggleCameraGlobal" class="p-1 rounded hover:bg-quibble-active text-quibble-text-m hover:text-quibble-text transition-colors" title="Toggle Camera">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-9 4h8a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2z"/>
               <path id="cameraDisabledSlash" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4l16 16"/>
             </svg>
           </button>
-          <button id="btnUserSettingsSidebar" class="p-1 rounded hover:bg-discord-active text-discord-text-m hover:text-discord-text transition-colors" title="User Settings">
+          <button id="btnUserSettingsSidebar" class="p-1 rounded hover:bg-quibble-active text-quibble-text-m hover:text-quibble-text transition-colors" title="User Settings">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.757.426 1.757 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.757-2.924 1.757-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.757-.426-1.757-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
           </button>
         </div>
-        <button id="btnInvite" class="p-1.5 rounded hover:bg-discord-active text-discord-text-m hover:text-discord-text transition-colors hidden" title="Copy Invite Link">
+        <button id="btnInvite" class="p-1.5 rounded hover:bg-quibble-active text-quibble-text-m hover:text-quibble-text transition-colors hidden" title="Copy Invite Link">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
           </svg>
@@ -305,25 +319,41 @@
     <div id="chatMain" class="flex-1 flex flex-col min-w-0">
       <!-- Chat header -->
       <div class="h-12 px-4 flex items-center shadow-md border-b border-black/20 flex-shrink-0">
-        <button id="btnMobileChannels" class="mobile-only p-1.5 rounded hover:bg-discord-hover text-discord-text-s mr-1" title="Toggle Channels">
+        <button id="btnMobileChannels" class="mobile-only p-1.5 rounded hover:bg-quibble-hover text-quibble-text-s mr-1" title="Toggle Channels">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </button>
-        <svg class="w-6 h-6 text-discord-text-m mr-2" fill="currentColor" viewBox="0 0 24 24">
+        <svg class="w-6 h-6 text-quibble-text-m mr-2" fill="currentColor" viewBox="0 0 24 24">
           <path d="M5.88 21l1.54-5.12H3.2l.36-1.18h4.22l1.26-4.2H4.8l.36-1.18h4.22L10.92 4h1.4l-1.54 5.32h4.22L16.54 4h1.4l-1.54 5.32H20.6l-.36 1.18h-4.2l-1.28 4.2h4.24l-.36 1.18h-4.22L13.08 21h-1.4l1.54-5.12H8.98L7.44 21H5.88zm4.3-6.3h4.22l1.26-4.2H11.44l-1.26 4.2z"/>
         </svg>
         <h3 class="font-semibold text-[15px]" id="chatHeaderTitle">Friends</h3>
-        <div class="mx-3 w-px h-6 bg-discord-divider"></div>
-        <span class="text-sm text-discord-text-m truncate" id="chatHeaderDesc">Direct messages</span>
+        <div class="mx-3 w-px h-6 bg-quibble-divider"></div>
+        <span class="text-sm text-quibble-text-m truncate" id="chatHeaderDesc">Direct messages</span>
         <div class="relative group ml-1">
-          <button id="securityStatusBtn" class="text-discord-green" aria-label="Security status">
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2l8 4v6c0 5.55-3.84 10.74-8 12-4.16-1.26-8-6.45-8-12V6l8-4zm0 3.2L6 8v4c0 4.15 2.65 8.02 6 9.23 3.35-1.21 6-5.08 6-9.23V8l-6-2.8zM10.8 13.7l-1.9-1.9-1.4 1.4 3.3 3.3 5.7-5.7-1.4-1.4-4.3 4.3z"/>
+          <button id="securityStatusBtn" class="text-quibble-green" aria-label="Security status">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <defs>
+                <linearGradient id="securityShieldGloss" x1="0" y1="0" x2="1" y2="0" gradientTransform="translate(-2 0)">
+                  <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+                  <stop offset="45%" stop-color="#ffffff" stop-opacity="0.42"/>
+                  <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+                  <animateTransform
+                    attributeName="gradientTransform"
+                    type="translate"
+                    values="-2 0; 1 0"
+                    dur="650ms"
+                    begin="securityStatusBtn.mouseover;securityStatusBtn.focusin;securityStatusBtn.mousedown;securityStatusBtn.click"
+                    fill="remove"/>
+                </linearGradient>
+              </defs>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3.05l7 3.5V12c0 4.86-3.21 8.91-7 10.23C8.21 20.91 5 16.86 5 12V6.55l7-3.5z"/>
+              <path d="M12 3.05l7 3.5V12c0 4.86-3.21 8.91-7 10.23C8.21 20.91 5 16.86 5 12V6.55l7-3.5z" fill="url(#securityShieldGloss)"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.25 12.1l1.85 1.85 3.65-3.65"/>
             </svg>
           </button>
-          <div id="securityTooltip" class="hidden absolute top-8 left-0 w-72 bg-discord-serverbar border border-discord-divider rounded-md p-3 text-xs text-discord-text-s shadow-xl z-40 group-hover:block">
-            <p class="text-discord-text font-semibold mb-2">System Status</p>
+          <div id="securityTooltip" class="hidden absolute top-8 left-0 w-72 bg-quibble-serverbar border border-quibble-divider rounded-md p-3 text-xs text-quibble-text-s shadow-xl z-40 group-hover:block">
+            <p class="text-quibble-text font-semibold mb-2">System Status</p>
             <p>Peers on swarm: <span id="securityPeers">0</span></p>
             <p>Known members: <span id="securityKnownMembers">0</span></p>
             <p>Connection: <span id="securityConn">Offline</span></p>
@@ -335,49 +365,89 @@
           <div class="relative">
             <div class="flex items-center gap-1.5">
               <input id="channelSearch" type="text" placeholder="Search"
-                class="w-44 bg-discord-serverbar border-none rounded px-3 py-1.5 text-discord-text placeholder-discord-text-m focus:outline-none focus:ring-2 focus:ring-discord-blurple text-xs">
-              <button id="btnChannelSearchSubmit" class="p-1 text-discord-text-s hover:text-discord-text transition-colors" title="Run Search">
+                class="w-44 bg-quibble-serverbar border-none rounded px-3 py-1.5 text-quibble-text placeholder-quibble-text-m focus:outline-none focus:ring-2 focus:ring-quibble-blurple text-xs">
+              <button id="btnChannelSearchSubmit" class="p-1 text-quibble-text-s hover:text-quibble-text transition-colors" title="Run Search">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m1.35-4.65a6 6 0 11-12 0 6 6 0 0112 0z"/>
                 </svg>
               </button>
             </div>
-            <div id="channelSearchDropdown" class="hidden absolute right-0 mt-2 w-96 max-h-72 overflow-y-auto bg-discord-serverbar border border-discord-divider rounded-md shadow-xl z-40"></div>
+            <div id="channelSearchDropdown" class="hidden absolute right-0 mt-2 w-96 max-h-72 overflow-y-auto bg-quibble-serverbar border border-quibble-divider rounded-md shadow-xl z-40"></div>
           </div>
-          <button id="btnUserSettings" class="p-1 text-discord-text-s hover:text-discord-text transition-colors" title="Channel/User Settings">
+          <button id="btnUserSettings" class="p-1 text-quibble-text-s hover:text-quibble-text transition-colors" title="Channel/User Settings">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.757.426 1.757 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.757-2.924 1.757-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.757-.426-1.757-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
           </button>
-          <button id="btnAdmin" class="p-1 text-discord-text-s hover:text-discord-text transition-colors hidden" title="Server Admin">
+          <button id="btnAdmin" class="p-1 text-quibble-text-s hover:text-quibble-text transition-colors hidden" title="Server Admin">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.757.426 1.757 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.757-2.924 1.757-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.757-.426-1.757-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
           </button>
 
-          <button id="btnVoice" class="p-1 text-discord-text-s hover:text-discord-text transition-colors" title="Start Voice Call">
+          <button id="btnVoice" class="p-1 text-quibble-text-s hover:text-quibble-text transition-colors" title="Start Voice Call">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 1v11m0 0a4 4 0 004-4V5a4 4 0 00-8 0v3a4 4 0 004 4zm-7 0a7 7 0 0014 0M9 21h6"/>
             </svg>
           </button>
 
-          <button id="btnVideoCall" class="p-1 text-discord-text-s hover:text-discord-text transition-colors" title="Start Video Call">
+          <button id="btnVideoCall" class="p-1 text-quibble-text-s hover:text-quibble-text transition-colors" title="Start Video Call">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-9 4h8a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2z"/>
             </svg>
           </button>
 
-          <button id="btnEndCall" class="p-1 text-discord-red hover:text-white transition-colors hidden" title="End Call">
+          <button id="btnEndCall" class="p-1 text-quibble-red hover:text-white transition-colors hidden" title="End Call">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10.5c1.8-1.8 4.2-2.7 6.7-2.7h4.6c2.5 0 4.9.9 6.7 2.7M6.6 16.2l2.4-2.4m8.4 2.4l-2.4-2.4"/>
             </svg>
           </button>
 
-          <button id="btnToggleMembers" class="p-1 text-discord-text-s hover:text-discord-text transition-colors" title="Toggle Members">
-            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M14 8.006a3 3 0 10-4 0 4.5 4.5 0 00-3 4.245v.5a.25.25 0 00.25.25h9.5a.25.25 0 00.25-.25v-.5a4.5 4.5 0 00-3-4.245zM18.5 12.5a2.5 2.5 0 10-3-0 3.5 3.5 0 00-1 .6 5.48 5.48 0 011.5 3.15h4.75a.25.25 0 00.25-.25v-.5a3.5 3.5 0 00-2.5-3z"/>
+          <div class="relative">
+            <button id="btnCallControls" class="p-1 text-quibble-text-s hover:text-quibble-text transition-colors hidden" title="Call Controls">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M3 12h18M3 18h18"/>
+              </svg>
+            </button>
+
+            <div id="callControlsMenu" class="hidden absolute right-0 mt-2 w-56 bg-quibble-serverbar border border-quibble-divider rounded-md shadow-xl p-2 z-40">
+              <div class="px-1 pb-2 mb-2 border-b border-quibble-divider">
+                <p class="text-[11px] uppercase tracking-wide text-quibble-text-m mb-1">Call Bitrate</p>
+                <select id="callBitrateMenu" class="w-full bg-quibble-active rounded px-2 py-1 text-xs focus:outline-none">
+                  <option value="auto" selected>Auto</option>
+                  <option value="24000">24 kbps</option>
+                  <option value="48000">48 kbps</option>
+                  <option value="64000">64 kbps</option>
+                  <option value="96000">96 kbps</option>
+                  <option value="128000">128 kbps</option>
+                  <option value="256000">256 kbps</option>
+                  <option value="512000">512 kbps</option>
+                  <option value="1000000">1 Mbps</option>
+                  <option value="2000000">2 Mbps</option>
+                  <option value="4000000">4 Mbps</option>
+                  <option value="8000000">8 Mbps</option>
+                </select>
+              </div>
+
+              <div class="space-y-1">
+                <button id="btnCallMicMenu" class="w-full text-left text-xs px-2 py-1 rounded hover:bg-quibble-hover">Toggle Mic</button>
+                <button id="btnCallCameraMenu" class="w-full text-left text-xs px-2 py-1 rounded hover:bg-quibble-hover">Toggle Camera</button>
+                <button id="btnCallScreenShareMenu" class="w-full text-left text-xs px-2 py-1 rounded hover:bg-quibble-hover">Screen Share</button>
+                <button id="btnCallRecordMenu" class="w-full text-left text-xs px-2 py-1 rounded hover:bg-quibble-hover">Start Recording</button>
+                <button id="btnCallTheaterMenu" class="w-full text-left text-xs px-2 py-1 rounded hover:bg-quibble-hover">Theater Mode</button>
+                <button id="btnCallFullscreenMenu" class="w-full text-left text-xs px-2 py-1 rounded hover:bg-quibble-hover">Fullscreen</button>
+              </div>
+            </div>
+          </div>
+
+          <button id="btnToggleMembers" class="p-1 text-quibble-text-s hover:text-quibble-text transition-colors" title="Toggle Members">
+            <svg id="iconMembersOn" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-5-3.87M17 20H7m10 0v-2c0-.65-.13-1.27-.36-1.84M7 20H2v-2a4 4 0 015-3.87M7 20v-2c0-.65.13-1.27.36-1.84m0 0a5 5 0 019.28 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM8 10a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
+            </svg>
+            <svg id="iconMembersOff" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3.8-3.99M9.8 14.6A5 5 0 0117 18v2H7v-2a5 5 0 011.7-3.76M15 7a3 3 0 00-4.42-2.64M6.27 6.27A2.5 2.5 0 005.5 8a2.5 2.5 0 002.5 2.5c.54 0 1.03-.17 1.43-.47M3 3l18 18"/>
             </svg>
           </button>
         </div>
@@ -385,38 +455,44 @@
 
       <!-- Welcome / No room state -->
       <div id="welcomeState" class="flex-1 flex flex-col items-center justify-center text-center px-8">
-        <div class="w-16 h-16 rounded-full bg-discord-blurple/20 flex items-center justify-center mb-4">
-          <svg class="w-8 h-8 text-discord-blurple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-          </svg>
+        <div class="w-16 h-16 rounded-full bg-quibble-blurple/20 flex items-center justify-center mb-4">
+          <img src="mascot_icon.webp" alt="Quibble mascot" class="w-10 h-10 object-contain">
         </div>
         <h3 class="text-xl font-bold mb-1">Welcome to Quibble</h3>
-        <p class="text-discord-text-s text-sm max-w-sm">Select a room from the sidebar or create a new one to start chatting peer-to-peer. Everything is encrypted & decentralized.</p>
+        <p class="text-quibble-text-s text-sm max-w-sm">Select a room from the sidebar or create a new one to start chatting peer-to-peer. Everything is encrypted & decentralized.</p>
 
         <div id="friendsHome" class="mt-8 w-full max-w-3xl text-center">
-          <div class="bg-discord-sidebar rounded p-6">
-            <p class="text-discord-text text-base font-semibold">No friends yet</p>
-            <p class="text-discord-text-s text-sm mt-2">Join a room and send friend requests from the member list to start a DM.</p>
+          <div class="bg-quibble-sidebar rounded p-6">
+            <p class="text-quibble-text text-base font-semibold">No friends yet</p>
+            <p class="text-quibble-text-s text-sm mt-2">Join a room and send friend requests from the member list to start a DM.</p>
           </div>
         </div>
       </div>
 
       <!-- Messages area -->
       <div id="chatArea" class="flex-1 flex flex-col min-h-0 hidden">
-        <div id="callStage" class="hidden px-4 pt-3 pb-2 border-b border-discord-divider bg-discord-sidebar/40">
+        <div id="callStage" class="hidden px-4 pt-3 pb-2 border-b border-quibble-divider bg-quibble-sidebar/40">
           <div class="flex items-center justify-between mb-2 gap-2">
-            <p id="callStatus" class="text-sm text-discord-text-s">No active call</p>
+            <p id="callStatus" class="text-sm text-quibble-text-s">No active call</p>
             <div class="flex items-center gap-2">
-              <label class="text-xs text-discord-text-m">Bitrate</label>
-              <select id="callBitrate" class="bg-discord-serverbar rounded px-2 py-1 text-xs focus:outline-none">
+              <label class="text-xs text-quibble-text-m">Bitrate</label>
+              <select id="callBitrate" class="bg-quibble-serverbar rounded px-2 py-1 text-xs focus:outline-none">
+                <option value="auto" selected>Auto</option>
                 <option value="24000">24 kbps</option>
-                <option value="48000" selected>48 kbps</option>
+                <option value="48000">48 kbps</option>
                 <option value="64000">64 kbps</option>
                 <option value="96000">96 kbps</option>
+                <option value="128000">128 kbps</option>
+                <option value="256000">256 kbps</option>
+                <option value="512000">512 kbps</option>
+                <option value="1000000">1 Mbps</option>
+                <option value="2000000">2 Mbps</option>
+                <option value="4000000">4 Mbps</option>
+                <option value="8000000">8 Mbps</option>
               </select>
-              <button id="btnCallScreenShare" class="px-2 py-1 rounded bg-discord-active text-xs">Screen</button>
-              <button id="btnCallTheater" class="px-2 py-1 rounded bg-discord-active text-xs">Theater</button>
-              <button id="btnCallFullscreen" class="px-2 py-1 rounded bg-discord-active text-xs">Full</button>
+              <button id="btnCallScreenShare" class="px-2 py-1 rounded bg-quibble-active text-xs">Screen</button>
+              <button id="btnCallTheater" class="px-2 py-1 rounded bg-quibble-active text-xs">Theater</button>
+              <button id="btnCallFullscreen" class="px-2 py-1 rounded bg-quibble-active text-xs">Full</button>
             </div>
           </div>
           <div class="grid grid-cols-2 gap-2" id="videoGrid">
@@ -427,10 +503,10 @@
 
         <div id="callEventFeed" class="px-4 pt-2 space-y-2"></div>
 
-        <div id="pinnedBar" class="hidden px-4 py-2 border-b border-discord-divider bg-discord-sidebar/40">
+        <div id="pinnedBar" class="hidden px-4 py-2 border-b border-quibble-divider bg-quibble-sidebar/40">
           <div class="flex items-center justify-between">
-            <span class="text-xs uppercase tracking-wide text-discord-text-m">Pinned</span>
-            <button id="btnClearPinView" class="text-xs text-discord-text-m hover:text-discord-text">Clear</button>
+            <span class="text-xs uppercase tracking-wide text-quibble-text-m">Pinned</span>
+            <button id="btnClearPinView" class="text-xs text-quibble-text-m hover:text-quibble-text">Clear</button>
           </div>
           <div id="pinnedList" class="mt-2 space-y-1"></div>
         </div>
@@ -441,14 +517,14 @@
         <div class="flex-1 overflow-y-auto flex" id="messagesScroll">
           <div class="flex-1 min-w-0">
           <div class="px-4 pt-6 pb-2" id="roomWelcome">
-            <div class="w-[68px] h-[68px] rounded-full bg-discord-blurple/30 flex items-center justify-center mb-4">
-              <svg class="w-10 h-10 text-discord-blurple" fill="currentColor" viewBox="0 0 24 24">
+            <div class="w-[68px] h-[68px] rounded-full bg-quibble-blurple/30 flex items-center justify-center mb-4">
+              <svg class="w-10 h-10 text-quibble-blurple" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M5.88 21l1.54-5.12H3.2l.36-1.18h4.22l1.26-4.2H4.8l.36-1.18h4.22L10.92 4h1.4l-1.54 5.32h4.22L16.54 4h1.4l-1.54 5.32H20.6l-.36 1.18h-4.2l-1.28 4.2h4.24l-.36 1.18h-4.22L13.08 21h-1.4l1.54-5.12H8.98L7.44 21H5.88zm4.3-6.3h4.22l1.26-4.2H11.44l-1.26 4.2z"/>
               </svg>
             </div>
-            <h2 class="text-[32px] font-bold leading-tight">Welcome to #general</h2>
-            <p class="text-discord-text-s text-sm mt-1 mb-4">This is the start of the room. Share the invite link to let others join.</p>
-            <div class="border-b border-discord-divider"></div>
+            <h2 id="roomWelcomeTitle" class="text-[32px] font-bold leading-tight">Welcome to #general</h2>
+            <p id="roomWelcomeDesc" class="text-quibble-text-s text-sm mt-1 mb-4">This is the start of the room. Share the invite link to let others join.</p>
+            <div class="border-b border-quibble-divider"></div>
           </div>
 
           <!-- Messages container -->
@@ -457,31 +533,31 @@
           </div>
           </div>
 
-          <aside id="threadPanel" class="hidden w-80 border-l border-discord-divider bg-discord-sidebar/40 px-3 py-3">
+          <aside id="threadPanel" class="hidden w-80 border-l border-quibble-divider bg-quibble-sidebar/40 px-3 py-3">
             <div class="flex items-center justify-between mb-2">
               <h4 class="text-sm font-semibold">Thread</h4>
-              <button id="btnCloseThread" class="text-discord-text-m hover:text-discord-text">✕</button>
+              <button id="btnCloseThread" class="text-quibble-text-m hover:text-quibble-text">✕</button>
             </div>
-            <div id="threadRoot" class="text-xs text-discord-text-s mb-3"></div>
+            <div id="threadRoot" class="text-xs text-quibble-text-s mb-3"></div>
             <div id="threadMessages" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
             <textarea id="threadInput" rows="2" placeholder="Reply to thread"
-              class="w-full mt-3 bg-discord-input rounded px-3 py-2 text-sm resize-none focus:outline-none"></textarea>
-            <button id="btnSendThread" class="w-full mt-2 bg-discord-blurple hover:bg-discord-blurple-h text-white text-sm py-2 rounded">Send Reply</button>
+              class="w-full mt-3 bg-quibble-input rounded px-3 py-2 text-sm resize-none focus:outline-none"></textarea>
+            <button id="btnSendThread" class="w-full mt-2 bg-quibble-blurple hover:bg-quibble-blurple-h text-white text-sm py-2 rounded">Send Reply</button>
           </aside>
         </div>
 
         <!-- Message input -->
         <div id="messageComposer" class="px-4 pb-6 pt-0 flex-shrink-0 relative">
-          <div id="emojiPicker" class="hidden absolute bottom-20 right-16 w-72 max-h-64 overflow-y-auto bg-discord-serverbar border border-discord-divider rounded-lg shadow-xl p-3 z-40">
-            <div class="text-xs uppercase tracking-wide text-discord-text-m mb-2">Server Emojis</div>
+          <div id="emojiPicker" class="hidden absolute bottom-20 right-16 w-72 max-h-64 overflow-y-auto bg-quibble-serverbar border border-quibble-divider rounded-lg shadow-xl p-3 z-40">
+            <div class="text-xs uppercase tracking-wide text-quibble-text-m mb-2">Server Emojis</div>
             <div id="customEmojiGrid" class="grid grid-cols-8 gap-1.5"></div>
-            <div class="border-b border-discord-divider mt-2 mb-2"></div>
-            <div class="text-xs uppercase tracking-wide text-discord-text-m mb-2">System Emojis</div>
+            <div class="border-b border-quibble-divider mt-2 mb-2"></div>
+            <div class="text-xs uppercase tracking-wide text-quibble-text-m mb-2">System Emojis</div>
             <div id="emojiGrid" class="grid grid-cols-8 gap-1.5"></div>
           </div>
 
-          <div class="bg-discord-input rounded-lg flex items-end px-4">
-            <button id="btnAttachFile" class="py-3 text-discord-text-m hover:text-discord-text transition-colors mr-2 flex-shrink-0" title="Upload File">
+          <div class="bg-quibble-input rounded-lg flex items-center px-4">
+            <button id="btnAttachFile" class="py-3 text-quibble-text-m hover:text-quibble-text transition-colors mr-2 flex-shrink-0" title="Upload File">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" stroke-width="2"/>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v8m-4-4h8"/>
@@ -490,10 +566,10 @@
             <input id="fileInput" type="file" class="hidden">
 
             <textarea id="messageInput" rows="1" placeholder="Message #general"
-              class="flex-1 bg-transparent border-none text-discord-text placeholder-discord-text-m py-3 resize-none focus:outline-none text-sm max-h-48 leading-relaxed"
-              style="height: 44px;"></textarea>
+              class="flex-1 bg-transparent border-none text-quibble-text placeholder-quibble-text-m py-2 resize-none focus:outline-none text-sm max-h-48 leading-5"
+              style="height: 48px; overflow-y: hidden; padding-top: 12px; padding-bottom: 4px;"></textarea>
 
-            <button id="btnEmoji" class="py-3 text-discord-text-m hover:text-discord-text transition-colors ml-2 flex-shrink-0" title="Emoji Picker">
+            <button id="btnEmoji" class="py-3 text-quibble-text-m hover:text-quibble-text transition-colors ml-2 flex-shrink-0" title="Emoji Picker">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
@@ -506,95 +582,106 @@
     </div>
 
     <!-- ── Members sidebar ── -->
-    <div id="membersSidebar" class="w-60 bg-discord-members flex-shrink-0 overflow-y-auto hidden">
+    <div id="membersSidebar" class="w-60 bg-quibble-members flex-shrink-0 overflow-y-auto hidden">
       <div class="px-4 pt-6">
-        <p class="text-xs font-bold uppercase text-discord-text-m tracking-wide mb-2">Online — <span id="onlineCount">0</span></p>
-        <div id="memberList">
-          <!-- Members injected here -->
+        <p class="presence-section-title text-xs font-bold uppercase text-quibble-text-m tracking-wide mb-2">
+          <span>Active</span>
+          <span id="onlineActiveCount">0</span>
+        </p>
+        <div id="memberListActive" class="mb-4">
+          <!-- Active members injected here -->
+        </div>
+
+        <p class="presence-section-title text-xs font-bold uppercase text-quibble-text-m tracking-wide mb-2">
+          <span>Away</span>
+          <span id="onlineAwayCount">0</span>
+        </p>
+        <div id="memberListAway">
+          <!-- Away members injected here -->
         </div>
       </div>
     </div>
   </div>
 
-  <div id="adminModal" class="fixed inset-0 z-50 flex items-center justify-center bg-discord-overlay hidden">
-    <div class="bg-discord-modal rounded-lg shadow-2xl w-full max-w-4xl overflow-hidden fade-in" style="max-height: 90vh;">
-      <div class="px-6 py-4 border-b border-discord-divider flex items-center justify-between">
+  <div id="adminModal" class="fixed inset-0 z-50 flex items-center justify-center bg-quibble-overlay hidden">
+    <div class="bg-quibble-modal rounded-lg shadow-2xl w-full max-w-4xl overflow-hidden fade-in" style="max-height: 90vh;">
+      <div class="px-6 py-4 border-b border-quibble-divider flex items-center justify-between">
         <h2 class="text-lg font-semibold">Server Admin</h2>
-        <button id="btnCloseAdminModal" class="text-discord-text-s hover:text-white">✕</button>
+        <button id="btnCloseAdminModal" class="text-quibble-text-s hover:text-white">✕</button>
       </div>
 
       <div class="p-6 grid grid-cols-2 gap-6 overflow-y-auto" style="max-height: calc(90vh - 72px);">
         <div class="space-y-5">
-          <div class="bg-discord-serverbar rounded p-3 mb-3 space-y-3">
+          <div class="bg-quibble-serverbar rounded p-3 mb-3 space-y-3">
             <h3 class="text-sm font-semibold">Server Profile</h3>
             <div class="space-y-2">
-              <p class="text-xs uppercase tracking-wide text-discord-text-m">Server Name</p>
+              <p class="text-xs uppercase tracking-wide text-quibble-text-m">Server Name</p>
               <div class="flex gap-2">
-                <input id="adminServerNameInput" maxlength="48" placeholder="Server name" class="flex-1 bg-discord-bg rounded px-3 py-2 text-sm focus:outline-none" />
-                <button id="btnAdminSetServerName" class="bg-discord-green hover:opacity-90 text-white text-xs px-3 py-2 rounded" style="white-space: nowrap;">Save Name</button>
+                <input id="adminServerNameInput" maxlength="48" placeholder="Server name" class="flex-1 bg-quibble-bg rounded px-3 py-2 text-sm focus:outline-none" />
+                <button id="btnAdminSetServerName" class="bg-quibble-green hover:opacity-90 text-white text-xs px-3 py-2 rounded" style="white-space: nowrap;">Save Name</button>
               </div>
             </div>
             <div class="flex items-center gap-3">
-              <div id="adminServerAvatarPreview" class="w-12 h-12 rounded-full bg-discord-bg flex items-center justify-center text-xl font-semibold overflow-hidden">😀</div>
+              <div id="adminServerAvatarPreview" class="w-12 h-12 rounded-full bg-quibble-bg flex items-center justify-center text-xl font-semibold overflow-hidden">😀</div>
               <div class="flex gap-2">
-                <button id="btnAdminSetServerAvatar" class="bg-discord-blurple hover:bg-discord-blurple-h text-white text-xs px-3 py-2 rounded">Upload Picture</button>
-                <button id="btnAdminClearServerAvatar" class="bg-discord-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Use Emoji</button>
+                <button id="btnAdminSetServerAvatar" class="bg-quibble-blurple hover:bg-quibble-blurple-h text-white text-xs px-3 py-2 rounded">Upload Picture</button>
+                <button id="btnAdminClearServerAvatar" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Use Emoji</button>
               </div>
             </div>
-            <p class="text-[11px] text-discord-text-m">If no picture is set, this server uses a random emoji icon.</p>
+            <p class="text-[11px] text-quibble-text-m">If no picture is set, this server uses a random emoji icon.</p>
           </div>
 
           <div>
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-semibold">Custom Emojis</h3>
-              <button id="btnAdminAddEmoji" class="bg-discord-blurple hover:bg-discord-blurple-h text-white text-sm px-3 py-2 rounded">Upload Emoji</button>
+              <button id="btnAdminAddEmoji" class="bg-quibble-blurple hover:bg-quibble-blurple-h text-white text-sm px-3 py-2 rounded">Upload Emoji</button>
             </div>
             <div id="adminEmojiList" class="space-y-2 max-h-48 overflow-y-auto"></div>
           </div>
 
-          <div class="bg-discord-serverbar rounded p-3 mb-3 space-y-2">
+          <div class="bg-quibble-serverbar rounded p-3 mb-3 space-y-2">
             <h3 class="text-sm font-semibold">Owner & Admins</h3>
-            <p class="text-xs uppercase tracking-wide text-discord-text-m">Server Owner</p>
+            <p class="text-xs uppercase tracking-wide text-quibble-text-m">Server Owner</p>
             <div id="ownerCurrent" class="text-sm">Unknown</div>
             <div class="flex gap-2">
-              <input id="ownerTransferInput" placeholder="Transfer owner to username" class="flex-1 bg-discord-bg rounded px-3 py-2 text-sm focus:outline-none" />
-              <button id="btnTransferOwner" class="bg-discord-yellow hover:opacity-90 text-black text-xs px-2 py-2 rounded font-semibold" style="white-space: nowrap;">Transfer</button>
+              <input id="ownerTransferInput" placeholder="Transfer owner to username" class="flex-1 bg-quibble-bg rounded px-3 py-2 text-sm focus:outline-none" />
+              <button id="btnTransferOwner" class="bg-quibble-yellow hover:opacity-90 text-black text-xs px-2 py-2 rounded font-semibold" style="white-space: nowrap;">Transfer</button>
             </div>
 
             <div id="adminList" class="space-y-2 max-h-32 overflow-y-auto text-sm"></div>
             <div class="mt-2 flex gap-2">
-              <input id="adminPubKeyInput" placeholder="Add admin public key (hex)" class="flex-1 bg-discord-bg rounded px-3 py-2 text-sm focus:outline-none" />
-              <button id="btnAddAdmin" class="bg-discord-green hover:opacity-90 text-white text-sm px-3 py-2 rounded" style="white-space: nowrap;">Add</button>
+              <input id="adminPubKeyInput" placeholder="Add admin public key (hex)" class="flex-1 bg-quibble-bg rounded px-3 py-2 text-sm focus:outline-none" />
+              <button id="btnAddAdmin" class="bg-quibble-green hover:opacity-90 text-white text-sm px-3 py-2 rounded" style="white-space: nowrap;">Add</button>
             </div>
           </div>
         </div>
 
         <div class="space-y-5">
           <h3 class="text-sm font-semibold mb-3">Moderation</h3>
-          <div class="bg-discord-serverbar rounded p-3 space-y-2">
-            <label class="text-xs uppercase tracking-wide text-discord-text-m">Username</label>
-            <input id="moderationUserInput" placeholder="username" class="w-full bg-discord-bg rounded px-3 py-2 text-sm focus:outline-none" />
+          <div class="bg-quibble-serverbar rounded p-3 space-y-2">
+            <label class="text-xs uppercase tracking-wide text-quibble-text-m">Username</label>
+            <input id="moderationUserInput" placeholder="username" class="w-full bg-quibble-bg rounded px-3 py-2 text-sm focus:outline-none" />
 
-            <label class="text-xs uppercase tracking-wide text-discord-text-m">Scope</label>
-            <select id="moderationChannelSelect" class="w-full bg-discord-bg rounded px-3 py-2 text-sm focus:outline-none"></select>
+            <label class="text-xs uppercase tracking-wide text-quibble-text-m">Scope</label>
+            <select id="moderationChannelSelect" class="w-full bg-quibble-bg rounded px-3 py-2 text-sm focus:outline-none"></select>
 
             <div class="flex gap-2 pt-1">
-              <button id="btnKickUserChannel" class="flex-1 bg-discord-yellow hover:opacity-90 text-black text-xs px-2 py-2 rounded font-semibold">Kick Channel</button>
-              <button id="btnBanUser" class="flex-1 bg-discord-red hover:opacity-90 text-white text-xs px-2 py-2 rounded">Ban User</button>
+              <button id="btnKickUserChannel" class="flex-1 bg-quibble-yellow hover:opacity-90 text-black text-xs px-2 py-2 rounded font-semibold">Kick Channel</button>
+              <button id="btnBanUser" class="flex-1 bg-quibble-red hover:opacity-90 text-white text-xs px-2 py-2 rounded">Ban User</button>
             </div>
-            <button id="btnUnbanUser" class="w-full bg-discord-active hover:opacity-90 text-white text-xs px-2 py-2 rounded">Restore Username</button>
+            <button id="btnUnbanUser" class="w-full bg-quibble-active hover:opacity-90 text-white text-xs px-2 py-2 rounded">Restore Username</button>
           </div>
 
           <div class="pt-2">
-            <h4 class="text-xs uppercase tracking-wide text-discord-text-m mb-2">Banned Users</h4>
+            <h4 class="text-xs uppercase tracking-wide text-quibble-text-m mb-2">Banned Users</h4>
             <div id="adminBanList" class="space-y-2 max-h-32 overflow-y-auto text-xs"></div>
           </div>
 
           <div class="pt-2">
-            <h4 class="text-xs uppercase tracking-wide text-discord-text-m mb-2">Owner Actions</h4>
+            <h4 class="text-xs uppercase tracking-wide text-quibble-text-m mb-2">Owner Actions</h4>
             <div class="space-y-2">
-            <button id="btnDisbandGroup" class="w-full bg-discord-red hover:opacity-90 text-white text-xs px-2 py-2 rounded">Disband Group</button>
-            <button id="btnDeleteServer" class="w-full bg-discord-active hover:opacity-90 text-white text-xs px-2 py-2 rounded">Delete Server (Local)</button>
+            <button id="btnDisbandGroup" class="w-full bg-quibble-red hover:opacity-90 text-white text-xs px-2 py-2 rounded">Disband Group</button>
+            <button id="btnDeleteServer" class="w-full bg-quibble-active hover:opacity-90 text-white text-xs px-2 py-2 rounded">Delete Server (Local)</button>
             </div>
           </div>
         </div>
@@ -604,51 +691,52 @@
 
   <input id="serverAvatarInput" type="file" accept="image/*" class="hidden">
 
-  <div id="usernameConflictModal" class="fixed inset-0 z-50 flex items-center justify-center bg-discord-overlay hidden">
-    <div class="bg-discord-modal rounded-lg shadow-2xl w-full max-w-md p-6 fade-in">
+  <div id="usernameConflictModal" class="fixed inset-0 z-50 flex items-center justify-center bg-quibble-overlay hidden">
+    <div class="bg-quibble-modal rounded-lg shadow-2xl w-full max-w-md p-6 fade-in">
       <h2 class="text-lg font-semibold mb-1">Username taken 🙂</h2>
-      <p id="usernameConflictText" class="text-sm text-discord-text-s mb-4">That username is already used in this server.</p>
+      <p id="usernameConflictText" class="text-sm text-quibble-text-s mb-4">That username is already used in this server.</p>
       <div id="usernameConflictSuggestions" class="space-y-2 mb-3"></div>
       <div class="flex gap-2 mb-2">
         <input id="usernameConflictCustomInput" type="text" maxlength="24" placeholder="Try another username"
-          class="flex-1 bg-discord-serverbar border-none rounded px-3 py-2 text-discord-text placeholder-discord-text-m focus:outline-none focus:ring-2 focus:ring-discord-blurple text-sm" />
-        <button id="btnUsernameConflictApply" class="bg-discord-blurple hover:bg-discord-blurple-h text-white text-sm px-3 py-2 rounded">Use</button>
+          class="flex-1 bg-quibble-serverbar border-none rounded px-3 py-2 text-quibble-text placeholder-quibble-text-m focus:outline-none focus:ring-2 focus:ring-quibble-blurple text-sm" />
+        <button id="btnUsernameConflictApply" class="bg-quibble-blurple hover:bg-quibble-blurple-h text-white text-sm px-3 py-2 rounded">Use</button>
       </div>
-      <p id="usernameConflictError" class="text-[11px] text-discord-red hidden">That username is still taken here.</p>
+      <p id="usernameConflictError" class="text-[11px] text-quibble-red hidden">That username is still taken here.</p>
     </div>
   </div>
 
-  <div id="userSettingsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-discord-overlay hidden">
-    <div class="bg-discord-modal rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden fade-in">
-      <div class="px-6 py-4 border-b border-discord-divider flex items-center justify-between">
+  <div id="userSettingsModal" class="fixed inset-0 z-50 flex items-start justify-center bg-quibble-overlay hidden overflow-hidden" style="padding: 12vh 14vw 4vh;">
+    <div id="userSettingsScaleWrap" class="w-full flex justify-center" style="transform-origin: top center;">
+    <div id="userSettingsPanel" class="bg-quibble-modal rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden fade-in">
+      <div class="px-6 py-4 border-b border-quibble-divider flex items-center justify-between">
         <h2 class="text-lg font-semibold">User Settings</h2>
-        <button id="btnCloseUserSettings" class="text-discord-text-s hover:text-white">✕</button>
+        <button id="btnCloseUserSettings" class="text-quibble-text-s hover:text-white">✕</button>
       </div>
 
       <div class="p-6 space-y-4">
-        <div class="bg-discord-serverbar rounded-md px-3 py-2.5 flex items-center justify-between gap-3">
-          <div class="min-w-0">
-            <p class="text-xs uppercase tracking-wide text-discord-text-m">Network Test</p>
-            <p id="settingsP2PStatus" class="text-sm text-discord-text truncate">🟡 Testing whether your network is P2P friendly…</p>
-            <p id="settingsP2PExplain" class="text-xs text-discord-text-m mt-1">We check whether your device can make direct peer-to-peer links.</p>
+        <p class="text-xs uppercase tracking-wide text-quibble-text-m">Network Test</p>
+        <div class="bg-quibble-serverbar rounded-md px-3 py-3.5 flex items-center justify-between gap-3">
+          <div class="min-w-0 flex-1">
+            <p id="settingsP2PStatus" class="text-sm text-quibble-text truncate">🟡 Testing whether your network is P2P friendly…</p>
+            <p id="settingsP2PExplain" class="text-xs text-quibble-text-m mt-1 leading-snug" style="min-height: 2rem; display: -webkit-box; line-clamp: 2; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">We check whether your device can make direct peer-to-peer links.</p>
           </div>
-          <button id="btnRetestP2P" class="bg-discord-active hover:opacity-90 text-white text-xs px-3 py-2 rounded whitespace-nowrap">Refresh / Retest</button>
+          <button id="btnRetestP2P" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded whitespace-nowrap min-w-[112px] text-center">Refresh / Retest</button>
         </div>
 
         <div class="grid grid-cols-2 gap-6">
         <div>
           <h3 class="text-sm font-semibold mb-3">Profile</h3>
           <div class="space-y-3">
-            <label class="text-xs uppercase tracking-wide text-discord-text-m">Full Name</label>
-            <input id="settingsFullName" class="w-full bg-discord-serverbar rounded px-3 py-2 text-sm focus:outline-none" />
+            <label class="text-xs uppercase tracking-wide text-quibble-text-m">Full Name</label>
+            <input id="settingsFullName" class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none" />
 
-            <label class="text-xs uppercase tracking-wide text-discord-text-m">Username (@)</label>
-            <input id="settingsUsername" class="w-full bg-discord-serverbar rounded px-3 py-2 text-sm focus:outline-none" />
+            <label class="text-xs uppercase tracking-wide text-quibble-text-m">Username (@)</label>
+            <input id="settingsUsername" class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none" />
 
-            <label class="text-xs uppercase tracking-wide text-discord-text-m">Profile Picture</label>
+            <label class="text-xs uppercase tracking-wide text-quibble-text-m">Profile Picture</label>
             <div class="flex items-center gap-3">
-              <div id="settingsAvatarPreview" class="w-10 h-10 rounded-full bg-discord-blurple flex items-center justify-center text-sm font-bold overflow-hidden">?</div>
-              <button id="btnChangeAvatar" class="bg-discord-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Change</button>
+              <div id="settingsAvatarPreview" class="w-10 h-10 rounded-full bg-quibble-blurple flex items-center justify-center text-sm font-bold overflow-hidden">?</div>
+              <button id="btnChangeAvatar" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Change</button>
             </div>
           </div>
         </div>
@@ -656,15 +744,25 @@
         <div>
           <h3 class="text-sm font-semibold mb-3">Audio / Video</h3>
           <div class="space-y-3">
-            <label class="text-xs uppercase tracking-wide text-discord-text-m">Camera</label>
-            <select id="settingsCamera" class="w-full bg-discord-serverbar rounded px-3 py-2 text-sm focus:outline-none"></select>
+            <label class="text-xs uppercase tracking-wide text-quibble-text-m">Camera</label>
+            <select id="settingsCamera" class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none"></select>
 
-            <label class="text-xs uppercase tracking-wide text-discord-text-m">Microphone</label>
-            <select id="settingsMic" class="w-full bg-discord-serverbar rounded px-3 py-2 text-sm focus:outline-none"></select>
+            <label class="text-xs uppercase tracking-wide text-quibble-text-m">Microphone</label>
+            <select id="settingsMic" class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none"></select>
 
-            <label class="flex items-center gap-2 text-sm text-discord-text-s">
-              <input id="settingsNoiseCancel" type="checkbox" class="accent-discord-blurple">
+            <label class="flex items-center gap-2 text-sm text-quibble-text-s">
+              <input id="settingsNoiseCancel" type="checkbox" class="accent-quibble-blurple">
               Noise cancellation
+            </label>
+
+            <label class="flex items-center gap-2 text-sm text-quibble-text-s">
+              <input id="settingsEnableHD" type="checkbox" class="accent-quibble-blurple" checked>
+              Enable HD video
+            </label>
+
+            <label class="flex items-center gap-2 text-sm text-quibble-text-s">
+              <input id="settingsRecordSelf" type="checkbox" class="accent-quibble-blurple" checked>
+              Include self in call recordings
             </label>
           </div>
         </div>
@@ -672,67 +770,69 @@
         <div>
           <h3 class="text-sm font-semibold mb-3">Notification Tones</h3>
           <div class="space-y-3">
-            <select id="settingsNotificationTone" class="w-full bg-discord-serverbar rounded px-3 py-2 text-sm focus:outline-none">
+            <select id="settingsNotificationTone" class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none">
               <option value="ping">Ping</option>
               <option value="chime">Chime</option>
               <option value="knock">Knock</option>
             </select>
-            <button id="btnPreviewNotificationTone" class="bg-discord-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Preview Notification</button>
+            <button id="btnPreviewNotificationTone" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Preview Notification</button>
           </div>
         </div>
 
         <div>
           <h3 class="text-sm font-semibold mb-3">Call Ringtones</h3>
           <div class="space-y-3">
-            <select id="settingsRingtone" class="w-full bg-discord-serverbar rounded px-3 py-2 text-sm focus:outline-none">
+            <select id="settingsRingtone" class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none">
               <option value="ring-classic">Classic</option>
               <option value="ring-soft">Soft</option>
               <option value="ring-bell">Bell</option>
             </select>
-            <button id="btnPreviewRingtone" class="bg-discord-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Preview Ringtone</button>
+            <button id="btnPreviewRingtone" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded">Preview Ringtone</button>
           </div>
         </div>
 
         <div class="col-span-2" style="grid-column: 1 / -1;">
           <h3 class="text-sm font-semibold mb-3">Local Data</h3>
-          <div class="rounded-md border border-discord-red/60 bg-discord-serverbar px-4 py-3" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-            <div>
-              <p class="text-sm text-discord-text">Delete local DB and start over</p>
-              <p class="mt-1 text-xs text-discord-text-m">This removes your local profile/rooms on this device and closes Quibble. Reopen the app to see Introduce yourself again.</p>
+          <div class="rounded-md border border-quibble-divider bg-quibble-serverbar px-4 py-3">
+            <div class="mb-3">
+              <p class="text-sm text-quibble-text">Seed phrase management</p>
+              <p class="mt-1 text-xs text-quibble-text-m">Download your 24-word seed phrase for backup, upload one to restore this device identity, or delete local account data on this device.</p>
             </div>
-            <button id="btnResetLocalDB" class="bg-discord-red hover:opacity-90 text-white text-xs px-3 py-2 rounded whitespace-nowrap">Delete Local DB & Restart</button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="btnDownloadSeedPhrase" class="bg-quibble-active hover:opacity-90 text-white text-xs px-3 py-2 rounded whitespace-nowrap">Download Seed Phrase</button>
+              <button id="btnUploadSeedPhrase" class="bg-quibble-blurple hover:bg-quibble-blurple-h text-white text-xs px-3 py-2 rounded whitespace-nowrap">Upload Seed Phrase</button>
+              <button id="btnResetLocalDB" class="bg-quibble-red hover:opacity-90 text-white text-xs px-3 py-2 rounded whitespace-nowrap">Delete Local DB & Restart</button>
+            </div>
           </div>
+          <input id="seedPhraseUploadInput" type="file" accept=".txt,text/plain" class="hidden">
         </div>
         </div>
       </div>
 
-      <div class="px-6 py-4 bg-discord-serverbar flex justify-end gap-2">
-        <button id="btnCancelUserSettings" class="text-sm text-discord-text-s hover:text-white transition-colors">Cancel</button>
-        <button id="btnSaveUserSettings" class="bg-discord-blurple hover:bg-discord-blurple-h text-white text-sm px-3 py-2 rounded">Save Settings</button>
+      <div class="px-6 py-4 bg-quibble-serverbar flex justify-end gap-2">
+        <button id="btnCancelUserSettings" class="text-sm text-quibble-text-s hover:text-white transition-colors">Cancel</button>
+        <button id="btnSaveUserSettings" class="bg-quibble-blurple hover:bg-quibble-blurple-h text-white text-sm px-3 py-2 rounded">Save Settings</button>
       </div>
+    </div>
     </div>
   </div>
 
-  <div id="appDialogModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-discord-overlay px-4">
-    <div class="w-full max-w-xl rounded-lg border border-discord-divider bg-discord-modal shadow-2xl fade-in" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+  <div id="appDialogModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-quibble-overlay px-4">
+    <div class="w-full max-w-xl rounded-lg border border-quibble-divider bg-quibble-modal shadow-2xl fade-in" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
       <div class="px-6 pt-6">
         <h2 id="appDialogTitle" class="text-3xl font-bold">Quibble</h2>
-        <p id="appDialogMessage" class="mt-4 text-sm leading-relaxed text-discord-text-s"></p>
+        <p id="appDialogMessage" class="mt-4 text-sm leading-relaxed text-quibble-text-s"></p>
         <div id="appDialogInputWrap" class="mt-5 hidden">
-          <input id="appDialogInput" type="text" maxlength="120" class="w-full rounded bg-discord-serverbar px-3 py-2.5 text-sm text-discord-text placeholder-discord-text-m focus:outline-none focus:ring-2 focus:ring-discord-blurple">
+          <input id="appDialogInput" type="text" maxlength="120" class="w-full rounded bg-quibble-serverbar px-3 py-2.5 text-sm text-quibble-text placeholder-quibble-text-m focus:outline-none focus:ring-2 focus:ring-quibble-blurple">
         </div>
       </div>
-      <div class="mt-5 flex items-center justify-end gap-3 bg-discord-serverbar px-6 py-4">
-        <button id="appDialogCancel" class="rounded bg-discord-active px-5 py-2 text-sm font-semibold text-discord-text-s transition hover:text-white">Cancel</button>
-        <button id="appDialogConfirm" class="rounded bg-discord-blurple px-5 py-2 text-sm font-semibold text-white transition hover:bg-discord-blurple-h">OK</button>
+      <div class="mt-5 flex items-center justify-end gap-3 bg-quibble-serverbar px-6 py-4">
+        <button id="appDialogCancel" class="rounded bg-quibble-active px-5 py-2 text-sm font-semibold text-quibble-text-s transition hover:text-white">Cancel</button>
+        <button id="appDialogConfirm" class="rounded bg-quibble-blurple px-5 py-2 text-sm font-semibold text-white transition hover:bg-quibble-blurple-h">OK</button>
       </div>
     </div>
   </div>
 
-  <script src="app.bootstrap.js"></script>
-  <script src="app.chat.js"></script>
-  <script src="app.calls.js"></script>
-  <script src="ui.desktop.js"></script>
-  <script src="ui.mobile.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

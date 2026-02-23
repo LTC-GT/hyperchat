@@ -5,8 +5,10 @@ export function createProfileStore (identity) {
   const profilePath = join(identity.dir, 'profile.json')
 
   function normalizePresenceStatus (value) {
-    const status = String(value || 'online')
-    return ['online', 'idle', 'dnd', 'invisible', 'offline'].includes(status) ? status : 'online'
+    const status = String(value || 'active').toLowerCase()
+    if (status === 'active' || status === 'away') return status
+    if (status === 'online') return 'active'
+    return 'away'
   }
 
   function defaultAnonUsername () {
@@ -32,7 +34,7 @@ export function createProfileStore (identity) {
       fullName: fallbackUsername,
       username: fallbackUsername,
       avatar: null,
-      presenceStatus: 'online',
+      presenceStatus: 'active',
       setupDone: false
     }
   }

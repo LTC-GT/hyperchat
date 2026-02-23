@@ -5,6 +5,8 @@
 
   const closeDrawers = () => {
     document.body.classList.remove('mobile-show-channels', 'mobile-show-members')
+    if (typeof state === 'object') state.membersVisible = false
+    if (typeof updateMembersToggleButton === 'function') updateMembersToggleButton(false)
   }
 
   const toggleChannelsDrawer = () => {
@@ -18,7 +20,10 @@
     if (!isMobileViewport()) return
     const showingMembers = document.body.classList.contains('mobile-show-members')
     document.body.classList.remove('mobile-show-channels')
-    document.body.classList.toggle('mobile-show-members', !showingMembers)
+    const nextVisible = !showingMembers
+    document.body.classList.toggle('mobile-show-members', nextVisible)
+    if (typeof state === 'object') state.membersVisible = nextVisible
+    if (typeof updateMembersToggleButton === 'function') updateMembersToggleButton(nextVisible)
   }
 
   const applyViewportClass = () => {
