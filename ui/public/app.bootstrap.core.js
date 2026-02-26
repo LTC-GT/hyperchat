@@ -36,6 +36,7 @@ const state = {
   activeCall: null, // { id, mode, roomKey, channelId }
   localCallStream: null,
   rtcIceServers: [],
+  peerServerHost: null,
   peerServerPort: null,
   peerServerPath: '/peerjs',
   peerServerKey: 'quibble',

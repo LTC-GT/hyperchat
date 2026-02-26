@@ -384,7 +384,8 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({
     type: 'rtc-config',
     iceServers: rtcIceServers,
-    peerServerPort: Number(process.env.PORT || DEFAULT_PORT) + 1,
+    peerServerHost: process.env.QUIBBLE_PEER_SERVER_HOST || null,
+    peerServerPort: Number(process.env.QUIBBLE_PEER_SERVER_PORT || (Number(process.env.PORT || DEFAULT_PORT) + 1)),
     peerServerPath: '/peerjs',
     peerServerKey: 'quibble'
   }))
@@ -1475,31 +1476,41 @@ if (listenPort !== DEFAULT_PORT) {
 }
 
 // Start embedded PeerServer for WebRTC signaling (port + 1)
-const peerServerPort = listenPort + 1
-try {
-  peerServerInstance = PeerServer({
-    port: peerServerPort,
-    path: '/peerjs',
-    allow_discovery: false,
-    proxied: false,
-    alive_timeout: 60000,
-    key: 'quibble',
-    generateClientId: () => 'qb-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
-  })
-  peerServerInstance.on('connection', (client) => {
-    console.log(`  [PeerServer] client connected: ${client.getId()}`)
-  })
-  peerServerInstance.on('disconnect', (client) => {
-    console.log(`  [PeerServer] client disconnected: ${client.getId()}`)
-  })
-} catch (err) {
-  console.error('⚠️  Failed to start PeerServer:', err.message)
+// If QUIBBLE_PEER_SERVER_PORT is set, assume an external/shared PeerServer and skip startup.
+const externalPeerServer = Boolean(process.env.QUIBBLE_PEER_SERVER_PORT)
+const peerServerPort = externalPeerServer
+  ? Number(process.env.QUIBBLE_PEER_SERVER_PORT)
+  : listenPort + 1
+
+if (!externalPeerServer) {
+  try {
+    peerServerInstance = PeerServer({
+      port: peerServerPort,
+      path: '/peerjs',
+      allow_discovery: false,
+      proxied: false,
+      alive_timeout: 60000,
+      key: 'quibble',
+      generateClientId: () => 'qb-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
+    })
+    peerServerInstance.on('connection', (client) => {
+      console.log(`  [PeerServer] client connected: ${client.getId()}`)
+    })
+    peerServerInstance.on('disconnect', (client) => {
+      console.log(`  [PeerServer] client disconnected: ${client.getId()}`)
+    })
+  } catch (err) {
+    console.error('⚠️  Failed to start PeerServer:', err.message)
+  }
 }
 
 httpServer.listen(listenPort, LISTEN_HOST, () => {
   console.log(`\n  🚀 Quibble Web UI running at http://localhost:${listenPort}`)
   if (peerServerInstance) {
     console.log(`  📞 PeerServer (WebRTC signaling) at http://localhost:${peerServerPort}/peerjs`)
+  } else if (externalPeerServer) {
+    const psHost = process.env.QUIBBLE_PEER_SERVER_HOST || 'localhost'
+    console.log(`  📞 Using external PeerServer at http://${psHost}:${peerServerPort}/peerjs`)
   }
   const lanUrls = getLanUrls(listenPort)
   for (const url of lanUrls) {

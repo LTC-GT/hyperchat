@@ -47,13 +47,14 @@ function ensurePeerInstance () {
   }
 
   // Build PeerServer connection options
-  // Connect to self-hosted PeerServer on same host, port + 1
+  // Connect to self-hosted PeerServer — host may be overridden for shared instances
+  const peerServerHost = state.peerServerHost || location.hostname
   const peerServerPort = state.peerServerPort || (Number(location.port) + 1)
   const peerServerPath = state.peerServerPath || '/peerjs'
   const peerServerKey = state.peerServerKey || 'quibble'
 
   const peerOpts = {
-    host: location.hostname,
+    host: peerServerHost,
     port: peerServerPort,
     path: peerServerPath,
     key: peerServerKey,
@@ -62,7 +63,7 @@ function ensurePeerInstance () {
     config: getPeerJsIceConfig()
   }
 
-  console.log('[PeerJS] Connecting to self-hosted PeerServer at', location.hostname + ':' + peerServerPort + peerServerPath)
+  console.log('[PeerJS] Connecting to self-hosted PeerServer at', peerServerHost + ':' + peerServerPort + peerServerPath)
 
   _peerReadyPromise = new Promise((resolve) => { _peerReadyResolve = resolve })
 
