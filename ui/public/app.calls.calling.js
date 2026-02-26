@@ -329,12 +329,86 @@ function onIncomingCallEnd (msg, roomKey) {
   endCall(false)
 }
 
+const PEER_DISCONNECT_GRACE_MS = 12000
+const peerDisconnectTimers = new Map()
+const peerIceRestartAttempts = new Map()
+
+function clearPeerDisconnectTimer (peerKey) {
+  const timer = peerDisconnectTimers.get(peerKey)
+  if (timer) clearTimeout(timer)
+  peerDisconnectTimers.delete(peerKey)
+}
+
+function clearPeerConnectionState (peerKey) {
+  clearPeerDisconnectTimer(peerKey)
+  peerIceRestartAttempts.delete(peerKey)
+}
+
+function removePeerConnection (peerKey, pc = null) {
+  const current = state.peerConnections.get(peerKey)
+  if (pc && current && current !== pc) return
+
+  clearPeerConnectionState(peerKey)
+  if (!current) return
+
+  try { current.close() } catch {}
+  state.peerConnections.delete(peerKey)
+  state.remoteStreams.delete(peerKey)
+  renderRemoteVideos()
+}
+
+function schedulePeerDisconnectCleanup (peerKey, pc) {
+  clearPeerDisconnectTimer(peerKey)
+  const timer = setTimeout(() => {
+    const current = state.peerConnections.get(peerKey)
+    if (!current || current !== pc) return
+    if (!['disconnected', 'failed', 'closed'].includes(current.connectionState)) return
+    removePeerConnection(peerKey, current)
+  }, PEER_DISCONNECT_GRACE_MS)
+  peerDisconnectTimers.set(peerKey, timer)
+}
+
+async function attemptPeerIceRestart (peerKey, pc) {
+  if (!pc || pc.connectionState === 'closed') return false
+  if (!state.activeCall) return false
+
+  const attempts = Number(peerIceRestartAttempts.get(peerKey) || 0)
+  if (attempts >= 1) return false
+  peerIceRestartAttempts.set(peerKey, attempts + 1)
+
+  try {
+    if (typeof pc.restartIce === 'function') pc.restartIce()
+    const offer = await pc.createOffer({ iceRestart: true })
+    await pc.setLocalDescription(offer)
+
+    send({
+      type: 'call-signal',
+      roomKey: state.activeRoom,
+      channelId: state.activeCall.channelId,
+      dmKey: state.activeCall.dmKey || null,
+      callId: state.activeCall.id,
+      target: peerKey,
+      signal: { type: 'offer', sdp: offer.sdp }
+    })
+    return true
+  } catch (err) {
+    console.warn('ICE restart attempt failed:', err)
+    return false
+  }
+}
+
 async function ensurePeerConnection (peerKey) {
   if (state.peerConnections.has(peerKey)) return
   if (!state.localCallStream || !state.activeCall) return
 
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: [{
+      urls: [
+        'stun:stun.l.google.com:19302',
+        'stun:stun1.l.google.com:19302',
+        'stun:stun2.l.google.com:19302'
+      ]
+    }]
   })
 
   const localAudioTrack = state.localCallStream.getAudioTracks()[0] || null
@@ -376,10 +450,38 @@ async function ensurePeerConnection (peerKey) {
 
   pc.onconnectionstatechange = () => {
     if (state.settings.callBitrateMode === 'auto') applyCallBitrate('auto')
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
-      state.peerConnections.delete(peerKey)
-      state.remoteStreams.delete(peerKey)
-      renderRemoteVideos()
+
+    if (pc.connectionState === 'connected') {
+      clearPeerConnectionState(peerKey)
+      return
+    }
+
+    if (pc.connectionState === 'disconnected') {
+      schedulePeerDisconnectCleanup(peerKey, pc)
+      return
+    }
+
+    if (pc.connectionState === 'failed') {
+      schedulePeerDisconnectCleanup(peerKey, pc)
+      attemptPeerIceRestart(peerKey, pc).catch(() => {})
+      if (dom.callStatus) dom.callStatus.textContent = 'Call connection unstable — retrying…'
+      return
+    }
+
+    if (pc.connectionState === 'closed') {
+      removePeerConnection(peerKey, pc)
+    }
+  }
+
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      clearPeerConnectionState(peerKey)
+      return
+    }
+
+    if (pc.iceConnectionState === 'failed') {
+      schedulePeerDisconnectCleanup(peerKey, pc)
+      attemptPeerIceRestart(peerKey, pc).catch(() => {})
     }
   }
 
@@ -431,6 +533,11 @@ async function endCall (notifyRemote) {
   for (const pc of state.peerConnections.values()) {
     try { pc.close() } catch {}
   }
+
+  for (const peerKey of state.peerConnections.keys()) {
+    clearPeerConnectionState(peerKey)
+  }
+
   state.peerConnections.clear()
   state.remoteStreams.clear()
 
