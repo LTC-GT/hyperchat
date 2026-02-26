@@ -297,6 +297,7 @@ async function onIncomingCallSignal (msg, roomKey) {
 
   if (signal.type === 'offer') {
     await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }))
+    await flushRemoteIceCandidates(msg.sender, pc)
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 
@@ -314,11 +315,25 @@ async function onIncomingCallSignal (msg, roomKey) {
 
   if (signal.type === 'answer') {
     await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }))
+    await flushRemoteIceCandidates(msg.sender, pc)
     return
   }
 
   if (signal.type === 'candidate' && signal.candidate) {
-    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate))
+    if (!pc.remoteDescription) {
+      queueRemoteIceCandidate(msg.sender, signal.candidate)
+      return
+    }
+
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(signal.candidate))
+    } catch (err) {
+      if (!pc.remoteDescription) {
+        queueRemoteIceCandidate(msg.sender, signal.candidate)
+        return
+      }
+      throw err
+    }
   }
 }
 
@@ -332,6 +347,29 @@ function onIncomingCallEnd (msg, roomKey) {
 const PEER_DISCONNECT_GRACE_MS = 12000
 const peerDisconnectTimers = new Map()
 const peerIceRestartAttempts = new Map()
+const pendingRemoteIceCandidates = new Map()
+
+function queueRemoteIceCandidate (peerKey, candidateInit) {
+  if (!peerKey || !candidateInit) return
+  const queued = pendingRemoteIceCandidates.get(peerKey) || []
+  queued.push(candidateInit)
+  pendingRemoteIceCandidates.set(peerKey, queued)
+}
+
+async function flushRemoteIceCandidates (peerKey, pc) {
+  if (!peerKey || !pc?.remoteDescription) return
+  const queued = pendingRemoteIceCandidates.get(peerKey)
+  if (!queued || queued.length === 0) return
+
+  pendingRemoteIceCandidates.delete(peerKey)
+  for (const candidateInit of queued) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidateInit))
+    } catch (err) {
+      console.warn('Dropping queued ICE candidate:', err)
+    }
+  }
+}
 
 function clearPeerDisconnectTimer (peerKey) {
   const timer = peerDisconnectTimers.get(peerKey)
@@ -342,6 +380,7 @@ function clearPeerDisconnectTimer (peerKey) {
 function clearPeerConnectionState (peerKey) {
   clearPeerDisconnectTimer(peerKey)
   peerIceRestartAttempts.delete(peerKey)
+  pendingRemoteIceCandidates.delete(peerKey)
 }
 
 function removePeerConnection (peerKey, pc = null) {
