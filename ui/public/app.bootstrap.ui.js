@@ -181,8 +181,8 @@ function probeP2PNetwork () {
     }
 
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      iceCandidatePoolSize: 1
+      iceServers: getRtcIceServers(),
+      iceCandidatePoolSize: 2
     })
 
     const candidateTypes = new Set()
