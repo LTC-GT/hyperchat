@@ -45,6 +45,56 @@ const MIME = {
 
 let localResetInProgress = false
 
+function parseIceServersFromEnv () {
+  const raw = String(process.env.QUIBBLE_ICE_SERVERS_JSON || '').trim()
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+
+    const clean = parsed
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null
+        const urls = Array.isArray(entry.urls)
+          ? entry.urls.map((url) => String(url || '').trim()).filter(Boolean)
+          : (String(entry.urls || '').trim() ? [String(entry.urls || '').trim()] : [])
+        if (urls.length === 0) return null
+
+        const normalized = { urls }
+        if (entry.username !== undefined) normalized.username = String(entry.username)
+        if (entry.credential !== undefined) normalized.credential = String(entry.credential)
+        return normalized
+      })
+      .filter(Boolean)
+
+    return clean.length > 0 ? clean : null
+  } catch {
+    return null
+  }
+}
+
+function getDefaultIceServers () {
+  return [{
+    urls: [
+      'stun:stun.l.google.com:19302',
+      'stun:stun1.l.google.com:19302',
+      'stun:stun2.l.google.com:19302',
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp'
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  }]
+}
+
+function resolveIceServers () {
+  return parseIceServersFromEnv() || getDefaultIceServers()
+}
+
+const rtcIceServers = resolveIceServers()
+
 function getLanUrls (port) {
   const urls = []
   const interfaces = os.networkInterfaces()
@@ -325,6 +375,11 @@ wss.on('connection', (ws) => {
   identity.avatar = profile.avatar || null
   identity.status = normalizePresenceStatus(profile.presenceStatus)
   const pubKeyHex = b4a.toString(identity.publicKey, 'hex')
+
+  ws.send(JSON.stringify({
+    type: 'rtc-config',
+    iceServers: rtcIceServers
+  }))
 
   // Send identity + profile on connect
   ws.send(JSON.stringify({

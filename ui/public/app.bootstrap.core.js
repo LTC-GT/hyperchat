@@ -35,6 +35,7 @@ const state = {
 
   activeCall: null, // { id, mode, roomKey, channelId }
   localCallStream: null,
+  rtcIceServers: [],
   peerConnections: new Map(), // peerKey -> RTCPeerConnection
   remoteStreams: new Map(), // peerKey -> MediaStream
   callTheater: false,

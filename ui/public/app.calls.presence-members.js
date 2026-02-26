@@ -528,7 +528,6 @@ async function replaceVideoTrack (track) {
         ? state.callScreenStream
         : state.localCallStream
       pc.addTrack(track, sourceStream)
-      preferAv1VideoCodec(pc)
     }
   }
 }

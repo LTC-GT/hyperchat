@@ -344,6 +344,26 @@ function onIncomingCallEnd (msg, roomKey) {
   endCall(false)
 }
 
+const DEFAULT_RTC_ICE_SERVERS = [{
+  urls: [
+    'stun:stun.l.google.com:19302',
+    'stun:stun1.l.google.com:19302',
+    'stun:stun2.l.google.com:19302',
+    'turn:openrelay.metered.ca:80',
+    'turn:openrelay.metered.ca:443',
+    'turn:openrelay.metered.ca:443?transport=tcp'
+  ],
+  username: 'openrelayproject',
+  credential: 'openrelayproject'
+}]
+
+function getRtcIceServers () {
+  if (Array.isArray(state.rtcIceServers) && state.rtcIceServers.length > 0) {
+    return state.rtcIceServers
+  }
+  return DEFAULT_RTC_ICE_SERVERS
+}
+
 const PEER_DISCONNECT_GRACE_MS = 12000
 const peerDisconnectTimers = new Map()
 const peerIceRestartAttempts = new Map()
@@ -441,13 +461,7 @@ async function ensurePeerConnection (peerKey) {
   if (!state.localCallStream || !state.activeCall) return
 
   const pc = new RTCPeerConnection({
-    iceServers: [{
-      urls: [
-        'stun:stun.l.google.com:19302',
-        'stun:stun1.l.google.com:19302',
-        'stun:stun2.l.google.com:19302'
-      ]
-    }]
+    iceServers: getRtcIceServers()
   })
 
   const localAudioTrack = state.localCallStream.getAudioTracks()[0] || null
@@ -460,8 +474,6 @@ async function ensurePeerConnection (peerKey) {
     const sourceStream = screenTrack ? state.callScreenStream : state.localCallStream
     pc.addTrack(localVideoTrack, sourceStream)
   }
-
-  preferAv1VideoCodec(pc)
 
   pc.onicecandidate = (event) => {
     if (!event.candidate || !state.activeCall) return
@@ -528,26 +540,7 @@ async function ensurePeerConnection (peerKey) {
 }
 
 function preferAv1VideoCodec (pc) {
-  if (!pc || typeof RTCRtpSender === 'undefined') return
-  if (typeof RTCRtpSender.getCapabilities !== 'function') return
-
-  const videoCaps = RTCRtpSender.getCapabilities('video')
-  const codecs = Array.isArray(videoCaps?.codecs) ? videoCaps.codecs : []
-  if (codecs.length === 0) return
-
-  const av1 = codecs.filter((codec) => /(^|\/)AV1X?/i.test(String(codec?.mimeType || '')))
-  if (av1.length === 0) return
-
-  const others = codecs.filter((codec) => !/(^|\/)AV1X?/i.test(String(codec?.mimeType || '')))
-  const preferred = [...av1, ...others]
-
-  for (const transceiver of pc.getTransceivers()) {
-    if (transceiver?.sender?.track?.kind !== 'video') continue
-    if (typeof transceiver.setCodecPreferences !== 'function') continue
-    try {
-      transceiver.setCodecPreferences(preferred)
-    } catch {}
-  }
+  void pc
 }
 
 async function endCall (notifyRemote) {

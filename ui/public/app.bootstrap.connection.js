@@ -157,8 +157,30 @@ function send (msg) {
   }
 }
 
+function normalizeRtcIceServers (iceServers) {
+  if (!Array.isArray(iceServers)) return []
+  return iceServers
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const urls = Array.isArray(entry.urls)
+        ? entry.urls.map((url) => String(url || '').trim()).filter(Boolean)
+        : (String(entry.urls || '').trim() ? [String(entry.urls || '').trim()] : [])
+      if (urls.length === 0) return null
+
+      const normalized = { urls }
+      if (entry.username !== undefined) normalized.username = String(entry.username)
+      if (entry.credential !== undefined) normalized.credential = String(entry.credential)
+      return normalized
+    })
+    .filter(Boolean)
+}
+
 function handleServerMessage (msg) {
   switch (msg.type) {
+    case 'rtc-config':
+      state.rtcIceServers = normalizeRtcIceServers(msg.iceServers)
+      break
+
     case 'identity':
       state.boot.identityReady = true
       state.boot.pendingRoomHistory.clear()
