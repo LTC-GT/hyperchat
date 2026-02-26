@@ -279,7 +279,7 @@ async function onIncomingCallJoin (msg, roomKey) {
     dmKey: state.activeCall.dmKey || null,
     callId: state.activeCall.id,
     target: msg.sender,
-    signal: { type: 'offer', sdp: offer.sdp }
+    signal: { type: 'offer', sdp: pc.localDescription?.sdp || offer.sdp }
   })
 }
 
@@ -298,7 +298,6 @@ async function onIncomingCallSignal (msg, roomKey) {
 
   if (signal.type === 'offer') {
     await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }))
-    await flushRemoteIceCandidates(msg.sender, pc)
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
     await waitForIceGatheringComplete(pc)
@@ -310,32 +309,18 @@ async function onIncomingCallSignal (msg, roomKey) {
       dmKey: state.activeCall.dmKey || null,
       callId: state.activeCall.id,
       target: msg.sender,
-      signal: { type: 'answer', sdp: answer.sdp }
+      signal: { type: 'answer', sdp: pc.localDescription?.sdp || answer.sdp }
     })
     return
   }
 
   if (signal.type === 'answer') {
     await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }))
-    await flushRemoteIceCandidates(msg.sender, pc)
     return
   }
 
   if (signal.type === 'candidate' && signal.candidate) {
-    if (!pc.remoteDescription) {
-      queueRemoteIceCandidate(msg.sender, signal.candidate)
-      return
-    }
-
-    try {
-      await pc.addIceCandidate(new RTCIceCandidate(signal.candidate))
-    } catch (err) {
-      if (!pc.remoteDescription) {
-        queueRemoteIceCandidate(msg.sender, signal.candidate)
-        return
-      }
-      throw err
-    }
+    return
   }
 }
 
@@ -362,30 +347,6 @@ function getRtcIceServers () {
 
 const PEER_DISCONNECT_GRACE_MS = 12000
 const peerDisconnectTimers = new Map()
-const peerIceRestartAttempts = new Map()
-const pendingRemoteIceCandidates = new Map()
-
-function queueRemoteIceCandidate (peerKey, candidateInit) {
-  if (!peerKey || !candidateInit) return
-  const queued = pendingRemoteIceCandidates.get(peerKey) || []
-  queued.push(candidateInit)
-  pendingRemoteIceCandidates.set(peerKey, queued)
-}
-
-async function flushRemoteIceCandidates (peerKey, pc) {
-  if (!peerKey || !pc?.remoteDescription) return
-  const queued = pendingRemoteIceCandidates.get(peerKey)
-  if (!queued || queued.length === 0) return
-
-  pendingRemoteIceCandidates.delete(peerKey)
-  for (const candidateInit of queued) {
-    try {
-      await pc.addIceCandidate(new RTCIceCandidate(candidateInit))
-    } catch (err) {
-      console.warn('Dropping queued ICE candidate:', err)
-    }
-  }
-}
 
 function clearPeerDisconnectTimer (peerKey) {
   const timer = peerDisconnectTimers.get(peerKey)
@@ -395,8 +356,6 @@ function clearPeerDisconnectTimer (peerKey) {
 
 function clearPeerConnectionState (peerKey) {
   clearPeerDisconnectTimer(peerKey)
-  peerIceRestartAttempts.delete(peerKey)
-  pendingRemoteIceCandidates.delete(peerKey)
 }
 
 function removePeerConnection (peerKey, pc = null) {
@@ -423,37 +382,7 @@ function schedulePeerDisconnectCleanup (peerKey, pc) {
   peerDisconnectTimers.set(peerKey, timer)
 }
 
-async function attemptPeerIceRestart (peerKey, pc) {
-  if (!pc || pc.connectionState === 'closed') return false
-  if (!state.activeCall) return false
-
-  const attempts = Number(peerIceRestartAttempts.get(peerKey) || 0)
-  if (attempts >= 1) return false
-  peerIceRestartAttempts.set(peerKey, attempts + 1)
-
-  try {
-    if (typeof pc.restartIce === 'function') pc.restartIce()
-    const offer = await pc.createOffer({ iceRestart: true })
-    await pc.setLocalDescription(offer)
-    await waitForIceGatheringComplete(pc)
-
-    send({
-      type: 'call-signal',
-      roomKey: state.activeRoom,
-      channelId: state.activeCall.channelId,
-      dmKey: state.activeCall.dmKey || null,
-      callId: state.activeCall.id,
-      target: peerKey,
-      signal: { type: 'offer', sdp: offer.sdp }
-    })
-    return true
-  } catch (err) {
-    console.warn('ICE restart attempt failed:', err)
-    return false
-  }
-}
-
-async function waitForIceGatheringComplete (pc, timeoutMs = 2200) {
+async function waitForIceGatheringComplete (pc, timeoutMs = 6000) {
   if (!pc || pc.iceGatheringState === 'complete') return
 
   await new Promise((resolve) => {
@@ -493,18 +422,7 @@ async function ensurePeerConnection (peerKey) {
     pc.addTrack(localVideoTrack, sourceStream)
   }
 
-  pc.onicecandidate = (event) => {
-    if (!event.candidate || !state.activeCall) return
-    send({
-      type: 'call-signal',
-      roomKey: state.activeRoom,
-      channelId: state.activeCall.channelId,
-      dmKey: state.activeCall.dmKey || null,
-      callId: state.activeCall.id,
-      target: peerKey,
-      signal: { type: 'candidate', candidate: event.candidate }
-    })
-  }
+  pc.onicecandidate = () => {}
 
   pc.ontrack = (event) => {
     const stream = resolveRemotePeerStream(peerKey, event)
@@ -532,7 +450,6 @@ async function ensurePeerConnection (peerKey) {
 
     if (pc.connectionState === 'failed') {
       schedulePeerDisconnectCleanup(peerKey, pc)
-      attemptPeerIceRestart(peerKey, pc).catch(() => {})
       if (dom.callStatus) dom.callStatus.textContent = 'Call connection unstable — retrying…'
       return
     }
@@ -550,7 +467,6 @@ async function ensurePeerConnection (peerKey) {
 
     if (pc.iceConnectionState === 'failed') {
       schedulePeerDisconnectCleanup(peerKey, pc)
-      attemptPeerIceRestart(peerKey, pc).catch(() => {})
     }
   }
 
