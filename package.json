@@ -10,6 +10,9 @@
   "scripts": {
     "start": "node bin/quibble.js",
     "dev": "node ui/server.js",
+    "dev:dual": "node bin/dev-dual.js",
+    "dev:client-a": "PORT=3000 HOST=127.0.0.1 QUIBBLE_IDENTITY_DIR=.quibble-dev/client-a/identity QUIBBLE_UI_STORAGE=.quibble-dev/client-a/storage-ui node ui/server.js",
+    "dev:client-b": "PORT=3001 HOST=127.0.0.1 QUIBBLE_IDENTITY_DIR=.quibble-dev/client-b/identity QUIBBLE_UI_STORAGE=.quibble-dev/client-b/storage-ui node ui/server.js",
     "build:css": "tailwindcss -c tailwind.config.cjs -i ./ui/public/styles.input.css -o ./ui/public/styles.css",
     "watch:css": "tailwindcss -c tailwind.config.cjs -i ./ui/public/styles.input.css -o ./ui/public/styles.css --watch",
     "quibble": "node bin/quibble.js",

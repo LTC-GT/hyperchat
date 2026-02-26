@@ -29,6 +29,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const PUBLIC = join(__dirname, 'public')
 const DEFAULT_PORT = Number(process.env.PORT || 3000)
 const LISTEN_HOST = process.env.HOST || '0.0.0.0'
+const IDENTITY_DIR = process.env.QUIBBLE_IDENTITY_DIR ? String(process.env.QUIBBLE_IDENTITY_DIR) : undefined
 
 const MIME = {
   '.html': 'text/html',
@@ -183,7 +184,7 @@ const httpServer = createServer((req, res) => {
 })
 
 // ─── P2P Node ───
-const identity = await loadIdentity()
+const identity = await loadIdentity({ dir: IDENTITY_DIR })
 const { quibble, storageDir } = await initQuibble(identity)
 
 async function initQuibble (identity) {

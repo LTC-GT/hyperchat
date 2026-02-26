@@ -35,6 +35,22 @@ pnpm dev
 
 Then open `http://localhost:3000`.
 
+### Run two local clients on one machine
+
+To test calls/chat/server features between two separate local users simultaneously:
+
+```bash
+pnpm run dev:dual
+```
+
+This launches two isolated Quibble UI servers:
+
+- `http://127.0.0.1:3000` (client-a)
+- `http://127.0.0.1:3001` (client-b)
+
+Each instance uses separate identity/storage directories under `.quibble-dev/`, so they behave as distinct clients.
+Use separate browser profiles or one normal + one private/incognito window when testing side-by-side.
+
 For live UI styling during development:
 
 ```bash

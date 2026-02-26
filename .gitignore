@@ -16,6 +16,7 @@ storage/
 test-storage/
 **/storage-*/
 .quibble-store/
+.quibble-dev/
 
 # GPG keys (DO NOT COMMIT)
 *.asc
