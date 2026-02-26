@@ -37,11 +37,20 @@ function getPeerJsIceConfig () {
 /* --- PeerJS instance lifecycle -------------------------------------- */
 
 function ensurePeerInstance () {
+  // Already connected — reuse
   if (peerInstance && !peerInstance.destroyed && !peerInstance.disconnected) return peerInstance
+
+  // If disconnected but not destroyed, try reconnecting instead of destroying
+  if (peerInstance && !peerInstance.destroyed && peerInstance.disconnected) {
+    console.log('[PeerJS] Peer is disconnected, attempting reconnect…')
+    try { peerInstance.reconnect() } catch {}
+    return peerInstance
+  }
 
   const myId = getPeerJsId()
   if (!myId) return null
 
+  // Destroyed or null — create new instance
   if (peerInstance) {
     try { peerInstance.destroy() } catch {}
   }
@@ -162,27 +171,51 @@ async function callPeer (remotePeerId, localStream) {
   }
 
   // Retry loop — the remote peer may not have registered yet.
-  // Try up to 6 times with increasing delays (total ~9s).
-  const delays = [800, 1500, 2000, 2000, 2000, 2000]
+  // Try up to 8 times with delays (total ~16s window).
+  const delays = [1000, 1500, 2000, 2000, 2000, 2000, 2000, 2000]
   for (let attempt = 0; attempt <= delays.length; attempt++) {
     if (attempt > 0) {
-      console.log(`[PeerJS] Retry ${attempt}/${delays.length} for peer: ${remotePeerId}`)
       await new Promise((r) => setTimeout(r, delays[attempt - 1]))
+      console.log(`[PeerJS] Retry ${attempt}/${delays.length} for peer: ${remotePeerId}`)
+
+      // Re-check peer instance health before retrying
+      const p = ensurePeerInstance()
+      if (!p) { console.error('[PeerJS] No peer instance available'); return }
+      if (_peerReadyPromise) await _peerReadyPromise
     }
 
+    // Skip if we already connected (e.g. remote called us first)
+    if (activeMediaConnections.has(remotePeerId)) return
+
     console.log('[PeerJS] Calling peer:', remotePeerId)
-    const mc = peer.call(remotePeerId, localStream)
+    const currentPeer = peerInstance
+    const mc = currentPeer.call(remotePeerId, localStream)
     if (!mc) {
       console.error('[PeerJS] peer.call() returned null for:', remotePeerId)
       continue
     }
 
-    // Wait for stream or error
+    // Wait for stream, or detect peer-unavailable quickly via global error
     const result = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve('timeout'), 5000)
-      mc.on('stream', () => { clearTimeout(timer); resolve('ok') })
-      mc.on('error', () => { clearTimeout(timer); resolve('error') })
-      mc.on('close', () => { clearTimeout(timer); resolve('close') })
+      let settled = false
+      const settle = (v) => { if (!settled) { settled = true; clearTimeout(timer); cleanup(); resolve(v) } }
+
+      const timer = setTimeout(() => settle('timeout'), 6000)
+      mc.on('stream', () => settle('ok'))
+      mc.on('error', () => settle('error'))
+      mc.on('close', () => settle('close'))
+
+      // Also catch the global peer-unavailable for this specific call
+      const onPeerError = (err) => {
+        if (err.type === 'peer-unavailable' && String(err.message || '').includes(remotePeerId)) {
+          settle('peer-unavailable')
+        }
+      }
+      currentPeer.on('error', onPeerError)
+
+      function cleanup () {
+        try { currentPeer.off('error', onPeerError) } catch {}
+      }
     })
 
     if (result === 'ok') {
@@ -192,7 +225,9 @@ async function callPeer (remotePeerId, localStream) {
 
     // Clean up failed attempt
     try { mc.close() } catch {}
-    console.warn(`[PeerJS] Call attempt ${attempt + 1} result: ${result}`)
+    if (result !== 'peer-unavailable') {
+      console.warn(`[PeerJS] Call attempt ${attempt + 1} result: ${result}`)
+    }
   }
 
   console.error('[PeerJS] All call attempts failed for:', remotePeerId)

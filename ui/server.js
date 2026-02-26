@@ -1485,6 +1485,7 @@ const peerServerPort = externalPeerServer
 if (!externalPeerServer) {
   try {
     peerServerInstance = PeerServer({
+      host: LISTEN_HOST,
       port: peerServerPort,
       path: '/peerjs',
       allow_discovery: false,
