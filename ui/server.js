@@ -80,7 +80,12 @@ function getDefaultIceServers () {
         'stun:stun.l.google.com:19302',
         'stun:stun1.l.google.com:19302'
       ]
-    }
+    },
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:global.relay.metered.ca:80', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
+    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
+    { urls: 'turn:global.relay.metered.ca:443', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
+    { urls: 'turn:global.relay.metered.ca:443?transport=tcp', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' }
   ]
 }
 
@@ -1490,7 +1495,7 @@ if (!externalPeerServer) {
       path: '/peerjs',
       allow_discovery: false,
       proxied: false,
-      alive_timeout: 60000,
+      alive_timeout: 6000,
       key: 'quibble',
       generateClientId: () => 'qb-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
     })

@@ -64,6 +64,10 @@ try {
   assert.ok(Array.isArray(defaults), 'Default ICE servers is an array')
   assert.ok(defaults.length > 0, 'Default ICE servers is non-empty')
   assert.ok(defaults[0].urls.some((u) => u.includes('stun:')), 'Default includes STUN server')
+  assert.ok(defaults.some((s) => {
+    const u = Array.isArray(s.urls) ? s.urls : [s.urls]
+    return u.some((url) => url.includes('turn:'))
+  }), 'Default includes TURN server for cross-network support')
 
   const custom = [{ urls: 'turn:my-turn.example.com:3478', username: 'user', credential: 'pass' }]
   const resolved = buildIceServers(custom)

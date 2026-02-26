@@ -1,23 +1,29 @@
 /* ===================================================================
    PeerJS-based video/voice calling for Quibble
    ===================================================================
-   All WebRTC complexity (ICE, STUN, TURN, offer/answer, candidates)
-   is handled by PeerJS. Signaling goes through a self-hosted PeerServer
-   running alongside the Quibble HTTP server (port + 1).
+   Based on the PeerJS library (https://peerjs.com/docs/#api).
 
-   The Autobase room channel is used only to announce call-start,
-   call-join, and call-end events so the UI stays in sync.
+   All WebRTC complexity (ICE, STUN/TURN, offer/answer, candidates)
+   is handled by PeerJS.  Signaling goes through a self-hosted
+   PeerServer running alongside the Quibble HTTP server (port + 1).
+
+   The Autobase room channel announces call-start / call-join /
+   call-end events so every member's UI stays in sync.
 
    Media flows P2P between browsers via WebRTC (DTLS/SRTP encrypted).
-   Peer IDs are derived from each user's Hypercore/Pear public key.
+   TURN servers are included in the default ICE config so calls work
+   across different networks, symmetric NATs and firewalls.
+
+   Peer IDs are derived from the user's Hypercore public key.
    =================================================================== */
 
-let peerInstance = null
-const activeMediaConnections = new Map() // remotePeerJsId -> MediaConnection
-let _peerReadyPromise = null
-let _peerReadyResolve = null
+/* ─── Module state ─────────────────────────────────────────────────── */
 
-/* --- PeerJS identity (derived from Hypercore public key) ------------ */
+let peerInstance = null                       // PeerJS Peer
+const activeMediaConnections = new Map()      // remotePeerJsId → MediaConnection
+let _peerOpenPromise = null                   // resolves when peer.on('open') fires
+
+/* ─── PeerJS identity ──────────────────────────────────────────────── */
 
 function getPeerJsId () {
   const pub = state.identity?.publicKey
@@ -25,122 +31,142 @@ function getPeerJsId () {
   return 'qb-' + String(pub).replace(/[^a-zA-Z0-9]/g, '').slice(0, 48)
 }
 
-/* --- PeerJS ICE config --------------------------------------------- */
+/* ─── ICE config (STUN + TURN for cross-network P2P) ──────────────── */
 
 function getPeerJsIceConfig () {
-  const servers = state.rtcIceServers && state.rtcIceServers.length > 0
+  const hasCustom = state.rtcIceServers && state.rtcIceServers.length > 0
+  const servers = hasCustom
     ? state.rtcIceServers
-    : [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
+    : [
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+        { urls: 'stun:stun.relay.metered.ca:80' },
+        { urls: 'turn:global.relay.metered.ca:80', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
+        { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
+        { urls: 'turn:global.relay.metered.ca:443', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
+        { urls: 'turn:global.relay.metered.ca:443?transport=tcp', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' }
+      ]
   return { iceServers: servers }
 }
 
-/* --- PeerJS instance lifecycle -------------------------------------- */
+/* ─── PeerJS instance lifecycle ────────────────────────────────────── */
 
+/**
+ * Create or return the singleton PeerJS Peer.
+ *
+ * Modelled on the videochat-peerjs-example: create once, register the
+ * `peer.on('call')` handler immediately so incoming calls are never missed.
+ */
 function ensurePeerInstance () {
-  // Already connected — reuse
-  if (peerInstance && !peerInstance.destroyed && !peerInstance.disconnected) return peerInstance
+  // Healthy — reuse
+  if (peerInstance && !peerInstance.destroyed && !peerInstance.disconnected) {
+    return peerInstance
+  }
 
-  // If disconnected but not destroyed, try reconnecting instead of destroying
+  // Disconnected but alive — reconnect
   if (peerInstance && !peerInstance.destroyed && peerInstance.disconnected) {
-    console.log('[PeerJS] Peer is disconnected, attempting reconnect…')
-    try { peerInstance.reconnect() } catch {}
+    console.log('[PeerJS] Reconnecting…')
+    try { peerInstance.reconnect() } catch (e) { console.warn('[PeerJS] reconnect error:', e) }
     return peerInstance
   }
 
   const myId = getPeerJsId()
   if (!myId) return null
 
-  // Destroyed or null — create new instance
-  if (peerInstance) {
-    try { peerInstance.destroy() } catch {}
-  }
+  // Tear down stale instance
+  if (peerInstance) { try { peerInstance.destroy() } catch {} }
+  peerInstance = null
 
-  // Build PeerServer connection options
-  // Connect to self-hosted PeerServer — host may be overridden for shared instances
   const peerServerHost = state.peerServerHost || location.hostname
   const peerServerPort = state.peerServerPort || (Number(location.port) + 1)
   const peerServerPath = state.peerServerPath || '/peerjs'
-  const peerServerKey = state.peerServerKey || 'quibble'
+  const peerServerKey  = state.peerServerKey  || 'quibble'
 
-  const peerOpts = {
-    host: peerServerHost,
-    port: peerServerPort,
-    path: peerServerPath,
-    key: peerServerKey,
-    secure: location.protocol === 'https:',
-    debug: 1,
-    config: getPeerJsIceConfig()
-  }
+  console.log('[PeerJS] Creating peer', myId, '→', peerServerHost + ':' + peerServerPort + peerServerPath)
 
-  console.log('[PeerJS] Connecting to self-hosted PeerServer at', peerServerHost + ':' + peerServerPort + peerServerPath)
+  _peerOpenPromise = new Promise((resolve) => {
+    peerInstance = new Peer(myId, {
+      host:   peerServerHost,
+      port:   peerServerPort,
+      path:   peerServerPath,
+      key:    peerServerKey,
+      secure: location.protocol === 'https:',
+      debug:  2,
+      config: getPeerJsIceConfig()
+    })
 
-  _peerReadyPromise = new Promise((resolve) => { _peerReadyResolve = resolve })
+    /* ── open ─────────────────────────────────────────────────── */
+    peerInstance.on('open', (openId) => {
+      console.log('[PeerJS] Connected — id:', openId)
+      resolve()
+    })
 
-  peerInstance = new Peer(myId, peerOpts)
+    /* ── error ────────────────────────────────────────────────── */
+    peerInstance.on('error', (err) => {
+      console.error('[PeerJS] Error:', err.type, err.message || err)
 
-  peerInstance.on('open', (id) => {
-    console.log('[PeerJS] Connected to signaling server, id:', id)
-    if (_peerReadyResolve) { _peerReadyResolve(); _peerReadyResolve = null }
+      if (err.type === 'unavailable-id') {
+        // Stale session on PeerServer — destroy and recreate after timeout
+        console.log('[PeerJS] ID taken (stale). Retrying in 6 s…')
+        try { peerInstance.destroy() } catch {}
+        peerInstance = null
+        setTimeout(() => ensurePeerInstance(), 6000)
+        resolve()                       // unblock anyone awaiting open
+        return
+      }
+
+      // For network / server / other errors just resolve so callers
+      // don't hang; the call itself will fail gracefully.
+      resolve()
+    })
+
+    /* ── disconnected ─────────────────────────────────────────── */
+    peerInstance.on('disconnected', () => {
+      if (peerInstance && !peerInstance.destroyed) {
+        console.warn('[PeerJS] Disconnected — reconnecting…')
+        try { peerInstance.reconnect() } catch {}
+      }
+    })
+
+    /* ── incoming call (core handler — like the PeerJS example) ─ */
+    peerInstance.on('call', (incomingCall) => {
+      console.log('[PeerJS] Incoming call from:', incomingCall.peer)
+
+      if (!state.activeCall || !state.localCallStream) {
+        console.warn('[PeerJS] No active call / no local stream — ignoring')
+        return
+      }
+
+      // Answer immediately with our local stream (same as example)
+      incomingCall.answer(state.localCallStream)
+      wireMediaConnection(incomingCall)
+    })
   })
 
-  peerInstance.on('error', (err) => {
-    console.error('[PeerJS] Error:', err.type, err.message || err)
-
-    if (err.type === 'unavailable-id') {
-      // ID already taken — append timestamp suffix and retry
-      try { peerInstance.destroy() } catch {}
-      const fallbackId = myId + '-' + Date.now().toString(36)
-      console.log('[PeerJS] Retrying with fallback id:', fallbackId)
-
-      _peerReadyPromise = new Promise((resolve) => { _peerReadyResolve = resolve })
-      peerInstance = new Peer(fallbackId, peerOpts)
-      setupPeerListeners(peerInstance)
-      peerInstance.on('open', () => {
-        if (_peerReadyResolve) { _peerReadyResolve(); _peerReadyResolve = null }
-      })
-    }
-
-    if (err.type === 'network' || err.type === 'server-error') {
-      console.warn('[PeerJS] Network/server error — will retry on next call attempt')
-      if (_peerReadyResolve) { _peerReadyResolve(); _peerReadyResolve = null }
-    }
-  })
-
-  peerInstance.on('disconnected', () => {
-    console.warn('[PeerJS] Disconnected from signaling server, reconnecting...')
-    try { peerInstance.reconnect() } catch {}
-  })
-
-  setupPeerListeners(peerInstance)
   return peerInstance
 }
 
-function setupPeerListeners (peer) {
-  peer.on('call', (mediaConnection) => {
-    console.log('[PeerJS] Incoming call from:', mediaConnection.peer)
-
-    if (!state.activeCall || !state.localCallStream) {
-      console.warn('[PeerJS] Ignoring incoming call - no active call state')
-      return
-    }
-
-    mediaConnection.answer(state.localCallStream)
-    wireMediaConnection(mediaConnection)
-  })
+/**
+ * Wait until the Peer has connected to PeerServer (open event).
+ */
+async function waitForPeerOpen () {
+  if (_peerOpenPromise) await _peerOpenPromise
 }
+
+/* ─── Wire a MediaConnection ───────────────────────────────────────── */
 
 function wireMediaConnection (mc) {
   const remotePeerId = mc.peer
 
   mc.on('stream', (remoteStream) => {
-    console.log('[PeerJS] Got remote stream from:', remotePeerId)
+    console.log('[PeerJS] Remote stream from:', remotePeerId)
+    window.peer_stream = remoteStream             // global ref (like example)
     state.remoteStreams.set(remotePeerId, remoteStream)
     syncPeerConnectionsFromPeerJs()
     renderRemoteVideos()
   })
 
   mc.on('close', () => {
-    console.log('[PeerJS] Media connection closed:', remotePeerId)
+    console.log('[PeerJS] Media closed:', remotePeerId)
     state.remoteStreams.delete(remotePeerId)
     activeMediaConnections.delete(remotePeerId)
     syncPeerConnectionsFromPeerJs()
@@ -148,7 +174,7 @@ function wireMediaConnection (mc) {
   })
 
   mc.on('error', (err) => {
-    console.error('[PeerJS] Media connection error:', remotePeerId, err)
+    console.error('[PeerJS] Media error:', remotePeerId, err)
     state.remoteStreams.delete(remotePeerId)
     activeMediaConnections.delete(remotePeerId)
     syncPeerConnectionsFromPeerJs()
@@ -159,79 +185,85 @@ function wireMediaConnection (mc) {
   syncPeerConnectionsFromPeerJs()
 }
 
+/* ─── Outgoing call to a remote peer ───────────────────────────────── */
+
 async function callPeer (remotePeerId, localStream) {
+  if (!localStream) { console.error('[PeerJS] callPeer: no local stream'); return }
+  if (activeMediaConnections.has(remotePeerId)) return   // already connected
+
   const peer = ensurePeerInstance()
-  if (!peer || !localStream) return
+  if (!peer) { console.error('[PeerJS] callPeer: no peer instance'); return }
+  await waitForPeerOpen()
 
-  if (activeMediaConnections.has(remotePeerId)) return
+  // Retry loop — the remote peer may not have registered on PeerServer
+  // yet (Autobase message arrives before PeerServer registration).
+  const MAX_ATTEMPTS = 6
+  const RETRY_DELAY  = 2500
 
-  // Wait for peer to be ready (connected to signaling server)
-  if (_peerReadyPromise) {
-    await _peerReadyPromise
-  }
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (activeMediaConnections.has(remotePeerId)) return  // connected inbound
 
-  // Retry loop — the remote peer may not have registered yet.
-  // Try up to 8 times with delays (total ~16s window).
-  const delays = [1000, 1500, 2000, 2000, 2000, 2000, 2000, 2000]
-  for (let attempt = 0; attempt <= delays.length; attempt++) {
-    if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, delays[attempt - 1]))
-      console.log(`[PeerJS] Retry ${attempt}/${delays.length} for peer: ${remotePeerId}`)
-
-      // Re-check peer instance health before retrying
-      const p = ensurePeerInstance()
-      if (!p) { console.error('[PeerJS] No peer instance available'); return }
-      if (_peerReadyPromise) await _peerReadyPromise
-    }
-
-    // Skip if we already connected (e.g. remote called us first)
-    if (activeMediaConnections.has(remotePeerId)) return
-
-    console.log('[PeerJS] Calling peer:', remotePeerId)
-    const currentPeer = peerInstance
-    const mc = currentPeer.call(remotePeerId, localStream)
+    console.log(`[PeerJS] Calling ${remotePeerId} (attempt ${attempt}/${MAX_ATTEMPTS})`)
+    const mc = peerInstance.call(remotePeerId, localStream)
     if (!mc) {
-      console.error('[PeerJS] peer.call() returned null for:', remotePeerId)
+      console.warn('[PeerJS] peer.call() returned null')
+      await delay(RETRY_DELAY)
       continue
     }
 
-    // Wait for stream, or detect peer-unavailable quickly via global error
-    const result = await new Promise((resolve) => {
-      let settled = false
-      const settle = (v) => { if (!settled) { settled = true; clearTimeout(timer); cleanup(); resolve(v) } }
+    const result = await raceCallResult(mc, remotePeerId, 8000)
 
-      const timer = setTimeout(() => settle('timeout'), 6000)
-      mc.on('stream', () => settle('ok'))
-      mc.on('error', () => settle('error'))
-      mc.on('close', () => settle('close'))
-
-      // Also catch the global peer-unavailable for this specific call
-      const onPeerError = (err) => {
-        if (err.type === 'peer-unavailable' && String(err.message || '').includes(remotePeerId)) {
-          settle('peer-unavailable')
-        }
-      }
-      currentPeer.on('error', onPeerError)
-
-      function cleanup () {
-        try { currentPeer.off('error', onPeerError) } catch {}
-      }
-    })
-
-    if (result === 'ok') {
+    if (result === 'stream') {
       wireMediaConnection(mc)
+      console.log('[PeerJS] Connected to', remotePeerId)
       return
     }
 
     // Clean up failed attempt
     try { mc.close() } catch {}
-    if (result !== 'peer-unavailable') {
-      console.warn(`[PeerJS] Call attempt ${attempt + 1} result: ${result}`)
+
+    if (attempt < MAX_ATTEMPTS) {
+      console.log(`[PeerJS] Attempt ${attempt} → ${result}. Retrying in ${RETRY_DELAY} ms…`)
+      await delay(RETRY_DELAY)
     }
   }
 
-  console.error('[PeerJS] All call attempts failed for:', remotePeerId)
+  console.error('[PeerJS] All attempts exhausted for', remotePeerId)
 }
+
+/**
+ * Race the call result: resolves 'stream' | 'error' | 'close' | 'peer-unavailable' | 'timeout'.
+ */
+function raceCallResult (mc, remotePeerId, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false
+    const settle = (v) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      removePeerListener()
+      resolve(v)
+    }
+
+    const timer = setTimeout(() => settle('timeout'), timeoutMs)
+    mc.on('stream', () => settle('stream'))
+    mc.on('error',  () => settle('error'))
+    mc.on('close',  () => settle('close'))
+
+    // PeerJS emits 'peer-unavailable' on the Peer, not the MediaConnection
+    const onPeerError = (err) => {
+      if (err.type === 'peer-unavailable' && String(err.message || '').includes(remotePeerId)) {
+        settle('peer-unavailable')
+      }
+    }
+    peerInstance.on('error', onPeerError)
+    function removePeerListener () { try { peerInstance.off('error', onPeerError) } catch {} }
+  })
+}
+
+function delay (ms) { return new Promise((r) => setTimeout(r, ms)) }
+
+/* ─── Sync state.peerConnections from PeerJS media connections ────── */
 
 function syncPeerConnectionsFromPeerJs () {
   state.peerConnections.clear()
@@ -241,7 +273,7 @@ function syncPeerConnectionsFromPeerJs () {
   }
 }
 
-/* --- Scope helpers -------------------------------------------------- */
+/* ─── Scope helpers ──────────────────────────────────────────────── */
 
 function resolveCallScope (opts = {}) {
   const roomKey = state.activeRoom
@@ -270,7 +302,7 @@ function callMatchesCurrentView (data, roomKey) {
 
   if (!dmKey) {
     const channelId = String(data?.channelId || 'general')
-    const activeText = String(state.activeTextChannelByRoom.get(state.activeRoom) || 'general')
+    const activeText  = String(state.activeTextChannelByRoom.get(state.activeRoom) || 'general')
     const activeVoice = String(state.activeVoiceChannelByRoom.get(state.activeRoom) || 'voice-general')
     if (channelId !== activeText && channelId !== activeVoice) return false
   }
@@ -282,7 +314,7 @@ function callMatchesActiveCallScope (data) {
   if (!state.activeCall) return false
   if (String(data?.callId || '') !== String(state.activeCall.id || '')) return false
 
-  const activeDmKey = state.activeCall.dmKey ? String(state.activeCall.dmKey) : null
+  const activeDmKey  = state.activeCall.dmKey ? String(state.activeCall.dmKey) : null
   const incomingDmKey = data?.dmKey ? String(data.dmKey) : null
   if (activeDmKey !== incomingDmKey) return false
 
@@ -300,7 +332,7 @@ function getCallScopeLabel (scope) {
   return tc ? '#' + tc.name : '#general'
 }
 
-/* --- Media acquisition ---------------------------------------------- */
+/* ─── Media acquisition ────────────────────────────────────────────── */
 
 async function requestCallMedia (mode) {
   try {
@@ -339,6 +371,9 @@ async function requestCallMedia (mode) {
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints)
 
+    // Store as global ref (like the PeerJS example: window.localStream)
+    window.localStream = stream
+
     if (mode === 'video' && camEnabled) {
       const liveVideo = stream.getVideoTracks().find((t) => t.readyState === 'live') || null
       if (!liveVideo) {
@@ -346,10 +381,7 @@ async function requestCallMedia (mode) {
           const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
           const freshTrack = fallback.getVideoTracks()[0] || null
           if (freshTrack) {
-            for (const t of stream.getVideoTracks()) {
-              stream.removeTrack(t)
-              try { t.stop() } catch {}
-            }
+            for (const t of stream.getVideoTracks()) { stream.removeTrack(t); try { t.stop() } catch {} }
             stream.addTrack(freshTrack)
           }
         } catch (videoErr) {
@@ -368,7 +400,7 @@ async function requestCallMedia (mode) {
   }
 }
 
-/* --- Call lifecycle ------------------------------------------------- */
+/* ─── Call lifecycle ───────────────────────────────────────────────── */
 
 async function startCall (mode, options = {}) {
   const scope = resolveCallScope(options)
@@ -384,9 +416,9 @@ async function startCall (mode, options = {}) {
   const stream = await requestCallMedia(mode)
   if (!stream) return
 
-  // Start PeerJS and wait for signaling connection
+  // Connect to PeerServer eagerly and wait for open
   ensurePeerInstance()
-  if (_peerReadyPromise) await _peerReadyPromise
+  await waitForPeerOpen()
 
   state.activeCall = { id: callId, mode, roomKey: scope.roomKey, channelId: scope.channelId, dmKey: scope.dmKey, scope: scope.scope }
   state.localCallStream = stream
@@ -403,8 +435,9 @@ async function startCall (mode, options = {}) {
   ensureAutoCallBitrateLoop?.()
   if (typeof renderChannelLists === 'function') renderChannelLists()
 
-  // Send call-start FIRST so the remote client gets the Autobase message
-  // and has time to register on PeerServer before we try to call them.
+  // Announce the call via Autobase so the remote peer's UI shows the
+  // incoming-call prompt.  We send this BEFORE calling them with PeerJS
+  // so they have time to join and register on PeerServer.
   send({
     type: 'start-call',
     roomKey: scope.roomKey,
@@ -423,9 +456,9 @@ async function joinCall (callId, mode, channelId, options = {}) {
   const stream = await requestCallMedia(mode)
   if (!stream || !state.activeRoom) return
 
-  // Start PeerJS and wait for signaling connection
+  // Connect to PeerServer eagerly and wait for open
   ensurePeerInstance()
-  if (_peerReadyPromise) await _peerReadyPromise
+  await waitForPeerOpen()
 
   const scope = {
     scope: options.scope || (options.dmKey ? 'dm' : (options.inlineChannelUi ? 'voice' : 'text')),
@@ -451,6 +484,9 @@ async function joinCall (callId, mode, channelId, options = {}) {
   ensureAutoCallBitrateLoop?.()
   if (typeof renderChannelLists === 'function') renderChannelLists()
 
+  // Announce join via Autobase.  The call starter receives this and
+  // initiates the PeerJS media connection to us via onIncomingCallJoin.
+  // We answer automatically via the peer.on('call') handler above.
   send({
     type: 'join-call',
     roomKey: scope.roomKey,
@@ -462,15 +498,9 @@ async function joinCall (callId, mode, channelId, options = {}) {
     mode,
     peerJsId: getPeerJsId()
   })
-
-  // Don't initiate PeerJS call from the joiner side.
-  // The starter (caller) will receive our join-call Autobase message
-  // and initiate the PeerJS media connection to us via onIncomingCallJoin.
-  // We just need to be registered on PeerServer (eager init) and ready
-  // to answer via setupPeerListeners -> peer.on('call').
 }
 
-/* --- Incoming Autobase messages ------------------------------------- */
+/* ─── Incoming Autobase messages ───────────────────────────────────── */
 
 async function onIncomingCallStart (msg, roomKey) {
   if (!callMatchesCurrentView(msg?.data, roomKey)) return
@@ -510,12 +540,14 @@ async function onIncomingCallJoin (msg, roomKey) {
 
   const remotePeerId = msg.data?.peerJsId
   if (remotePeerId && remotePeerId !== getPeerJsId() && state.localCallStream) {
+    // The joiner is ready on PeerServer — call them.
+    // They will answer via peer.on('call') automatically.
     callPeer(remotePeerId, state.localCallStream)
   }
 }
 
 function onIncomingCallSignal (_msg, _roomKey) {
-  // PeerJS handles all WebRTC signaling internally - no-op
+  // PeerJS handles all WebRTC signaling internally — no-op
 }
 
 function onIncomingCallEnd (msg, roomKey) {
@@ -525,7 +557,7 @@ function onIncomingCallEnd (msg, roomKey) {
   endCall(false)
 }
 
-/* --- End call ------------------------------------------------------- */
+/* ─── End call ─────────────────────────────────────────────────────── */
 
 async function endCall (notifyRemote) {
   if (!state.activeCall) return
@@ -546,6 +578,7 @@ async function endCall (notifyRemote) {
     })
   }
 
+  // Close all PeerJS media connections
   for (const mc of activeMediaConnections.values()) {
     try { mc.close() } catch {}
   }
@@ -557,6 +590,7 @@ async function endCall (notifyRemote) {
   state.peerConnections.clear()
   state.remoteStreams.clear()
 
+  // Stop local media tracks
   if (state.localCallStream) {
     for (const t of state.localCallStream.getTracks()) t.stop()
   }
@@ -566,12 +600,14 @@ async function endCall (notifyRemote) {
 
   state.localCallStream = null
   state.activeCall = null
+  window.localStream = null
+  window.peer_stream = null
   ensureAutoCallBitrateLoop?.()
   hideCallStage()
   if (typeof renderChannelLists === 'function') renderChannelLists()
 }
 
-/* --- UI helpers ----------------------------------------------------- */
+/* ─── UI helpers ───────────────────────────────────────────────────── */
 
 function showInlineVoiceCallControls () {
   dom.callStage?.classList.add('hidden')
@@ -624,8 +660,8 @@ function attachLocalStream (stream) {
   if (typeof bindCallVideoFullscreen === 'function') bindCallVideoFullscreen(dom.localVideo, 'you')
 }
 
-/* --- Compat stubs (referenced by other scripts) --------------------- */
+/* ─── Compat stubs (referenced by other scripts) ───────────────────── */
 
 function getRtcIceServers () {
-  return [{ urls: 'stun:stun.l.google.com:19302' }]
+  return getPeerJsIceConfig().iceServers
 }
