@@ -2,20 +2,36 @@
    PeerJS-based video/voice calling for Quibble
    ===================================================================
    All WebRTC complexity (ICE, STUN, TURN, offer/answer, candidates)
-   is handled by PeerJS. Signaling goes through PeerJS cloud server.
+   is handled by PeerJS. Signaling goes through a self-hosted PeerServer
+   running alongside the Quibble HTTP server (port + 1).
+
    The Autobase room channel is used only to announce call-start,
    call-join, and call-end events so the UI stays in sync.
+
+   Media flows P2P between browsers via WebRTC (DTLS/SRTP encrypted).
+   Peer IDs are derived from each user's Hypercore/Pear public key.
    =================================================================== */
 
 let peerInstance = null
 const activeMediaConnections = new Map() // remotePeerJsId -> MediaConnection
+let _peerReadyPromise = null
+let _peerReadyResolve = null
 
-/* --- PeerJS identity ------------------------------------------------ */
+/* --- PeerJS identity (derived from Hypercore public key) ------------ */
 
 function getPeerJsId () {
   const pub = state.identity?.publicKey
   if (!pub) return null
   return 'qb-' + String(pub).replace(/[^a-zA-Z0-9]/g, '').slice(0, 48)
+}
+
+/* --- PeerJS ICE config --------------------------------------------- */
+
+function getPeerJsIceConfig () {
+  const servers = state.rtcIceServers && state.rtcIceServers.length > 0
+    ? state.rtcIceServers
+    : [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
+  return { iceServers: servers }
 }
 
 /* --- PeerJS instance lifecycle -------------------------------------- */
@@ -30,35 +46,53 @@ function ensurePeerInstance () {
     try { peerInstance.destroy() } catch {}
   }
 
-  peerInstance = new Peer(myId, {
+  // Build PeerServer connection options
+  // Connect to self-hosted PeerServer on same host, port + 1
+  const peerServerPort = state.peerServerPort || (Number(location.port) + 1)
+  const peerServerPath = state.peerServerPath || '/peerjs'
+  const peerServerKey = state.peerServerKey || 'quibble'
+
+  const peerOpts = {
+    host: location.hostname,
+    port: peerServerPort,
+    path: peerServerPath,
+    key: peerServerKey,
+    secure: location.protocol === 'https:',
     debug: 1,
-    config: {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    }
-  })
+    config: getPeerJsIceConfig()
+  }
+
+  console.log('[PeerJS] Connecting to self-hosted PeerServer at', location.hostname + ':' + peerServerPort + peerServerPath)
+
+  _peerReadyPromise = new Promise((resolve) => { _peerReadyResolve = resolve })
+
+  peerInstance = new Peer(myId, peerOpts)
 
   peerInstance.on('open', (id) => {
     console.log('[PeerJS] Connected to signaling server, id:', id)
+    if (_peerReadyResolve) { _peerReadyResolve(); _peerReadyResolve = null }
   })
 
   peerInstance.on('error', (err) => {
     console.error('[PeerJS] Error:', err.type, err.message || err)
+
     if (err.type === 'unavailable-id') {
+      // ID already taken — append timestamp suffix and retry
       try { peerInstance.destroy() } catch {}
       const fallbackId = myId + '-' + Date.now().toString(36)
-      peerInstance = new Peer(fallbackId, {
-        debug: 1,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
-        }
-      })
+      console.log('[PeerJS] Retrying with fallback id:', fallbackId)
+
+      _peerReadyPromise = new Promise((resolve) => { _peerReadyResolve = resolve })
+      peerInstance = new Peer(fallbackId, peerOpts)
       setupPeerListeners(peerInstance)
+      peerInstance.on('open', () => {
+        if (_peerReadyResolve) { _peerReadyResolve(); _peerReadyResolve = null }
+      })
+    }
+
+    if (err.type === 'network' || err.type === 'server-error') {
+      console.warn('[PeerJS] Network/server error — will retry on next call attempt')
+      if (_peerReadyResolve) { _peerReadyResolve(); _peerReadyResolve = null }
     }
   })
 
@@ -115,11 +149,19 @@ function wireMediaConnection (mc) {
   syncPeerConnectionsFromPeerJs()
 }
 
-function callPeer (remotePeerId, localStream) {
+async function callPeer (remotePeerId, localStream) {
   const peer = ensurePeerInstance()
   if (!peer || !localStream) return
 
   if (activeMediaConnections.has(remotePeerId)) return
+
+  // Wait for peer to be ready (connected to signaling server)
+  if (_peerReadyPromise) {
+    await _peerReadyPromise
+  }
+
+  // Small delay to ensure the remote peer has also registered
+  await new Promise((r) => setTimeout(r, 500))
 
   console.log('[PeerJS] Calling peer:', remotePeerId)
   const mc = peer.call(remotePeerId, localStream)
@@ -282,7 +324,9 @@ async function startCall (mode, options = {}) {
   const stream = await requestCallMedia(mode)
   if (!stream) return
 
+  // Start PeerJS and wait for signaling connection
   ensurePeerInstance()
+  if (_peerReadyPromise) await _peerReadyPromise
 
   state.activeCall = { id: callId, mode, roomKey: scope.roomKey, channelId: scope.channelId, dmKey: scope.dmKey, scope: scope.scope }
   state.localCallStream = stream
@@ -317,7 +361,9 @@ async function joinCall (callId, mode, channelId, options = {}) {
   const stream = await requestCallMedia(mode)
   if (!stream || !state.activeRoom) return
 
+  // Start PeerJS and wait for signaling connection
   ensurePeerInstance()
+  if (_peerReadyPromise) await _peerReadyPromise
 
   const scope = {
     scope: options.scope || (options.dmKey ? 'dm' : (options.inlineChannelUi ? 'voice' : 'text')),

@@ -9,10 +9,8 @@ import b4a from 'b4a'
 
 import { loadIdentity, setName, getSeedPhrase, importSeedPhrase } from '../lib/identity.js'
 import { Quibble } from '../lib/quibble.js'
-import { textMsg, systemMsg, voiceMsg, videoMsg, randomRoomIconEmoji } from '../lib/messages.js'
+import { textMsg, systemMsg, randomRoomIconEmoji } from '../lib/messages.js'
 import { sendFile } from '../lib/file-transfer.js'
-import { attachVoice } from '../lib/voice.js'
-import { attachVideo } from '../lib/video.js'
 import { createProfileStore } from './server-profile.js'
 import {
   getRoomOwner,
@@ -234,10 +232,6 @@ async function initQuibble (identity) {
 
 // Track watchers for cleanup
 const roomWatchers = new Map() // roomKeyHex -> Set<{ ws, unsub }>
-const wsVoiceSessions = new Map() // ws -> Set<sessionId>
-const voiceSessions = new Map() // sessionId -> { roomKey, channels:Set, sockets:Set, wsClients:Set }
-const wsVideoSessions = new Map() // ws -> Set<sessionId>
-const videoSessions = new Map() // sessionId -> { roomKey, channels:Set, sockets:Set, wsClients:Set }
 const activeCallsByScope = new Map() // `${roomKey}|${scope}|${channelId}|${dmKey}` -> { callId, startedBy, startedAt }
 
 // ─── Profile persistence (avatar, name stored alongside identity) ───
@@ -389,7 +383,10 @@ wss.on('connection', (ws) => {
 
   ws.send(JSON.stringify({
     type: 'rtc-config',
-    iceServers: rtcIceServers
+    iceServers: rtcIceServers,
+    peerServerPort: Number(process.env.PORT || DEFAULT_PORT) + 1,
+    peerServerPath: '/peerjs',
+    peerServerKey: 'quibble'
   }))
 
   // Send identity + profile on connect
@@ -1221,116 +1218,16 @@ wss.on('connection', (ws) => {
           break
         }
 
-        case 'start-voice': {
-          const room = quibble.rooms.get(msg.roomKey)
-          if (!room) break
-
-          const sessionId = b4a.toString(b4a.from(`${Date.now()}-${Math.random()}`), 'hex').slice(0, 24)
-          ensureVoiceSession(sessionId, msg.roomKey)
-          addVoiceClient(sessionId, ws)
-          const vm = voiceMsg('offer', sessionId, identity)
-          vm.channelId = msg.channelId || 'voice-general'
-          await room.append(vm)
-
-          ws.send(JSON.stringify({
-            type: 'voice-started',
-            roomKey: msg.roomKey,
-            channelId: msg.channelId || 'voice-general',
-            sessionId
-          }))
+        case 'start-voice':
+        case 'join-voice':
+        case 'voice-audio':
+        case 'end-voice':
+        case 'start-video':
+        case 'join-video':
+        case 'video-frame':
+        case 'end-video':
+          // Legacy Protomux voice/video – now handled entirely by PeerJS in the browser.
           break
-        }
-
-        case 'join-voice': {
-          const room = quibble.rooms.get(msg.roomKey)
-          if (!room || !msg.sessionId) break
-
-          ensureVoiceSession(msg.sessionId, msg.roomKey)
-          addVoiceClient(msg.sessionId, ws)
-          const vm = voiceMsg('answer', msg.sessionId, identity)
-          vm.channelId = msg.channelId || 'voice-general'
-          await room.append(vm)
-          break
-        }
-
-        case 'voice-audio': {
-          if (!msg.sessionId || !msg.dataBase64) break
-          const session = voiceSessions.get(msg.sessionId)
-          if (!session) break
-
-          const audioBuf = b4a.from(msg.dataBase64, 'base64')
-          for (const channel of session.channels) {
-            try { channel.sendAudio(audioBuf) } catch {}
-          }
-          break
-        }
-
-        case 'end-voice': {
-          const room = quibble.rooms.get(msg.roomKey)
-          if (room && msg.sessionId) {
-            const vm = voiceMsg('end', msg.sessionId, identity)
-            vm.channelId = msg.channelId || 'voice-general'
-            await room.append(vm)
-          }
-          closeVoiceSession(msg.sessionId)
-          break
-        }
-
-        case 'start-video': {
-          const room = quibble.rooms.get(msg.roomKey)
-          if (!room) break
-
-          const sessionId = b4a.toString(b4a.from(`${Date.now()}-${Math.random()}`), 'hex').slice(0, 24)
-          ensureVideoSession(sessionId, msg.roomKey)
-          addVideoClient(sessionId, ws)
-          const vm = videoMsg('offer', sessionId, identity)
-          vm.channelId = msg.channelId || 'voice-general'
-          await room.append(vm)
-
-          ws.send(JSON.stringify({
-            type: 'video-started',
-            roomKey: msg.roomKey,
-            channelId: msg.channelId || 'voice-general',
-            sessionId
-          }))
-          break
-        }
-
-        case 'join-video': {
-          const room = quibble.rooms.get(msg.roomKey)
-          if (!room || !msg.sessionId) break
-
-          ensureVideoSession(msg.sessionId, msg.roomKey)
-          addVideoClient(msg.sessionId, ws)
-          const vm = videoMsg('answer', msg.sessionId, identity)
-          vm.channelId = msg.channelId || 'voice-general'
-          await room.append(vm)
-          break
-        }
-
-        case 'video-frame': {
-          if (!msg.sessionId || !msg.dataBase64) break
-          const session = videoSessions.get(msg.sessionId)
-          if (!session) break
-
-          const frameBuf = b4a.from(msg.dataBase64, 'base64')
-          for (const channel of session.channels) {
-            try { channel.sendFrame(frameBuf) } catch {}
-          }
-          break
-        }
-
-        case 'end-video': {
-          const room = quibble.rooms.get(msg.roomKey)
-          if (room && msg.sessionId) {
-            const vm = videoMsg('end', msg.sessionId, identity)
-            vm.channelId = msg.channelId || 'voice-general'
-            await room.append(vm)
-          }
-          closeVideoSession(msg.sessionId)
-          break
-        }
-
         case 'get-history': {
           const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
@@ -1430,26 +1327,6 @@ wss.on('connection', (ws) => {
       }
       if (watchers.size === 0) roomWatchers.delete(keyHex)
     }
-
-    const sessionIds = wsVoiceSessions.get(ws)
-    if (sessionIds) {
-      for (const sessionId of sessionIds) {
-        const session = voiceSessions.get(sessionId)
-        if (!session) continue
-        session.wsClients.delete(ws)
-      }
-      wsVoiceSessions.delete(ws)
-    }
-
-    const videoSessionIds = wsVideoSessions.get(ws)
-    if (videoSessionIds) {
-      for (const sessionId of videoSessionIds) {
-        const session = videoSessions.get(sessionId)
-        if (!session) continue
-        session.wsClients.delete(ws)
-      }
-      wsVideoSessions.delete(ws)
-    }
   })
 })
 
@@ -1470,24 +1347,6 @@ function startWatching (room, keyHex, ws) {
       watchers.delete(entry)
       if (watchers.size === 0) roomWatchers.delete(keyHex)
       return
-    }
-
-    if (msg?.type === 'voice' && msg?.sessionId) {
-      if (msg.action === 'offer' || msg.action === 'answer') {
-        ensureVoiceSession(msg.sessionId, keyHex)
-      }
-      if (msg.action === 'end') {
-        closeVoiceSession(msg.sessionId)
-      }
-    }
-
-    if (msg?.type === 'video' && msg?.sessionId) {
-      if (msg.action === 'offer' || msg.action === 'answer') {
-        ensureVideoSession(msg.sessionId, keyHex)
-      }
-      if (msg.action === 'end') {
-        closeVideoSession(msg.sessionId)
-      }
     }
 
     if (msg?.type === 'system' && msg?.action === 'add-writer') {
@@ -1529,14 +1388,6 @@ function stopWatching (keyHex, ws) {
 quibble.swarm.on('connection', (socket, info) => {
   const peerKey = b4a.toString(info.publicKey, 'hex')
   broadcast({ type: 'peer-connected', peerKey })
-
-  for (const [sessionId, session] of voiceSessions) {
-    attachVoiceSocket(sessionId, session.roomKey, socket)
-  }
-
-  for (const [sessionId, session] of videoSessions) {
-    attachVideoSocket(sessionId, session.roomKey, socket)
-  }
 })
 
 function broadcast (msg) {
@@ -1610,187 +1461,12 @@ async function getLatestUserReactionState (room, { messageId, emoji, senderKey }
   }
 }
 
-function addVoiceClient (sessionId, ws) {
-  if (!wsVoiceSessions.has(ws)) wsVoiceSessions.set(ws, new Set())
-  wsVoiceSessions.get(ws).add(sessionId)
+// ─── PeerServer for WebRTC signaling ───
+// PeerJS clients connect here instead of the cloud PeerServer.
+// No media flows through this server — only signaling metadata.
+import { PeerServer } from 'peer'
 
-  const session = voiceSessions.get(sessionId)
-  if (session) session.wsClients.add(ws)
-}
-
-function ensureVoiceSession (sessionId, roomKey) {
-  if (!voiceSessions.has(sessionId)) {
-    voiceSessions.set(sessionId, {
-      roomKey,
-      channels: new Set(),
-      sockets: new Set(),
-      wsClients: new Set()
-    })
-  }
-
-  const session = voiceSessions.get(sessionId)
-  session.roomKey = roomKey
-
-  for (const socket of quibble.connections) {
-    attachVoiceSocket(sessionId, roomKey, socket)
-  }
-}
-
-function attachVoiceSocket (sessionId, roomKey, socket) {
-  const session = voiceSessions.get(sessionId)
-  if (!session || session.sockets.has(socket)) return
-
-  try {
-    const channel = attachVoice(socket, sessionId)
-    session.sockets.add(socket)
-    session.channels.add(channel)
-
-    channel.on('audio', (buf) => {
-      broadcastToVoiceClients(sessionId, {
-        type: 'voice-audio',
-        roomKey,
-        sessionId,
-        dataBase64: b4a.toString(buf, 'base64')
-      })
-    })
-
-    channel.on('control', (data) => {
-      if (data?.action === 'end') {
-        closeVoiceSession(sessionId)
-      }
-    })
-
-    channel.on('close', () => {
-      session.channels.delete(channel)
-      session.sockets.delete(socket)
-    })
-  } catch {}
-}
-
-function broadcastToVoiceClients (sessionId, msg) {
-  const session = voiceSessions.get(sessionId)
-  if (!session) return
-  const data = JSON.stringify(msg)
-
-  for (const ws of session.wsClients) {
-    try {
-      if (ws.readyState === 1) ws.send(data)
-    } catch {}
-  }
-}
-
-function closeVoiceSession (sessionId) {
-  const session = voiceSessions.get(sessionId)
-  if (!session) return
-
-  for (const channel of session.channels) {
-    try { channel.end() } catch {}
-  }
-
-  broadcastToVoiceClients(sessionId, {
-    type: 'voice-ended',
-    roomKey: session.roomKey,
-    sessionId
-  })
-
-  for (const ws of session.wsClients) {
-    const ids = wsVoiceSessions.get(ws)
-    if (ids) ids.delete(sessionId)
-  }
-
-  voiceSessions.delete(sessionId)
-}
-
-function addVideoClient (sessionId, ws) {
-  if (!wsVideoSessions.has(ws)) wsVideoSessions.set(ws, new Set())
-  wsVideoSessions.get(ws).add(sessionId)
-
-  const session = videoSessions.get(sessionId)
-  if (session) session.wsClients.add(ws)
-}
-
-function ensureVideoSession (sessionId, roomKey) {
-  if (!videoSessions.has(sessionId)) {
-    videoSessions.set(sessionId, {
-      roomKey,
-      channels: new Set(),
-      sockets: new Set(),
-      wsClients: new Set()
-    })
-  }
-
-  const session = videoSessions.get(sessionId)
-  session.roomKey = roomKey
-
-  for (const socket of quibble.connections) {
-    attachVideoSocket(sessionId, roomKey, socket)
-  }
-}
-
-function attachVideoSocket (sessionId, roomKey, socket) {
-  const session = videoSessions.get(sessionId)
-  if (!session || session.sockets.has(socket)) return
-
-  try {
-    const channel = attachVideo(socket, sessionId)
-    session.sockets.add(socket)
-    session.channels.add(channel)
-
-    channel.on('frame', (buf) => {
-      broadcastToVideoClients(sessionId, {
-        type: 'video-frame',
-        roomKey,
-        sessionId,
-        dataBase64: b4a.toString(buf, 'base64')
-      })
-    })
-
-    channel.on('control', (data) => {
-      if (data?.action === 'end') {
-        closeVideoSession(sessionId)
-      }
-    })
-
-    channel.on('close', () => {
-      session.channels.delete(channel)
-      session.sockets.delete(socket)
-    })
-  } catch {}
-}
-
-function broadcastToVideoClients (sessionId, msg) {
-  const session = videoSessions.get(sessionId)
-  if (!session) return
-  const data = JSON.stringify(msg)
-
-  for (const ws of session.wsClients) {
-    try {
-      if (ws.readyState === 1) ws.send(data)
-    } catch {}
-  }
-}
-
-function closeVideoSession (sessionId) {
-  const session = videoSessions.get(sessionId)
-  if (!session) return
-
-  for (const channel of session.channels) {
-    try { channel.end() } catch {}
-  }
-
-  broadcastToVideoClients(sessionId, {
-    type: 'video-ended',
-    roomKey: session.roomKey,
-    sessionId
-  })
-
-  for (const ws of session.wsClients) {
-    const ids = wsVideoSessions.get(ws)
-    if (ids) ids.delete(sessionId)
-  }
-
-  videoSessions.delete(sessionId)
-}
+let peerServerInstance = null
 
 // ─── Start ───
 const listenPort = await findOpenPort(DEFAULT_PORT)
@@ -1798,8 +1474,33 @@ if (listenPort !== DEFAULT_PORT) {
   console.warn(`⚠️  Port ${DEFAULT_PORT} is in use, using ${listenPort} instead.`)
 }
 
+// Start embedded PeerServer for WebRTC signaling (port + 1)
+const peerServerPort = listenPort + 1
+try {
+  peerServerInstance = PeerServer({
+    port: peerServerPort,
+    path: '/peerjs',
+    allow_discovery: false,
+    proxied: false,
+    alive_timeout: 60000,
+    key: 'quibble',
+    generateClientId: () => 'qb-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
+  })
+  peerServerInstance.on('connection', (client) => {
+    console.log(`  [PeerServer] client connected: ${client.getId()}`)
+  })
+  peerServerInstance.on('disconnect', (client) => {
+    console.log(`  [PeerServer] client disconnected: ${client.getId()}`)
+  })
+} catch (err) {
+  console.error('⚠️  Failed to start PeerServer:', err.message)
+}
+
 httpServer.listen(listenPort, LISTEN_HOST, () => {
   console.log(`\n  🚀 Quibble Web UI running at http://localhost:${listenPort}`)
+  if (peerServerInstance) {
+    console.log(`  📞 PeerServer (WebRTC signaling) at http://localhost:${peerServerPort}/peerjs`)
+  }
   const lanUrls = getLanUrls(listenPort)
   for (const url of lanUrls) {
     console.log(`  📱 LAN: ${url}`)

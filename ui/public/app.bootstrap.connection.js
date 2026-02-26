@@ -179,6 +179,9 @@ function handleServerMessage (msg) {
   switch (msg.type) {
     case 'rtc-config':
       state.rtcIceServers = normalizeRtcIceServers(msg.iceServers)
+      state.peerServerPort = msg.peerServerPort || null
+      state.peerServerPath = msg.peerServerPath || '/peerjs'
+      state.peerServerKey = msg.peerServerKey || 'quibble'
       break
 
     case 'identity':
