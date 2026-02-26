@@ -183,6 +183,8 @@ function handleServerMessage (msg) {
       state.peerServerPort = msg.peerServerPort || null
       state.peerServerPath = msg.peerServerPath || '/peerjs'
       state.peerServerKey = msg.peerServerKey || 'quibble'
+      // Eagerly connect to PeerServer so we're registered before any call
+      if (typeof ensurePeerInstance === 'function') ensurePeerInstance()
       break
 
     case 'identity':

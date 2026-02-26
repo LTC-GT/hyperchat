@@ -161,17 +161,41 @@ async function callPeer (remotePeerId, localStream) {
     await _peerReadyPromise
   }
 
-  // Small delay to ensure the remote peer has also registered
-  await new Promise((r) => setTimeout(r, 500))
+  // Retry loop — the remote peer may not have registered yet.
+  // Try up to 6 times with increasing delays (total ~9s).
+  const delays = [800, 1500, 2000, 2000, 2000, 2000]
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    if (attempt > 0) {
+      console.log(`[PeerJS] Retry ${attempt}/${delays.length} for peer: ${remotePeerId}`)
+      await new Promise((r) => setTimeout(r, delays[attempt - 1]))
+    }
 
-  console.log('[PeerJS] Calling peer:', remotePeerId)
-  const mc = peer.call(remotePeerId, localStream)
-  if (!mc) {
-    console.error('[PeerJS] peer.call() returned null for:', remotePeerId)
-    return
+    console.log('[PeerJS] Calling peer:', remotePeerId)
+    const mc = peer.call(remotePeerId, localStream)
+    if (!mc) {
+      console.error('[PeerJS] peer.call() returned null for:', remotePeerId)
+      continue
+    }
+
+    // Wait for stream or error
+    const result = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), 5000)
+      mc.on('stream', () => { clearTimeout(timer); resolve('ok') })
+      mc.on('error', () => { clearTimeout(timer); resolve('error') })
+      mc.on('close', () => { clearTimeout(timer); resolve('close') })
+    })
+
+    if (result === 'ok') {
+      wireMediaConnection(mc)
+      return
+    }
+
+    // Clean up failed attempt
+    try { mc.close() } catch {}
+    console.warn(`[PeerJS] Call attempt ${attempt + 1} result: ${result}`)
   }
 
-  wireMediaConnection(mc)
+  console.error('[PeerJS] All call attempts failed for:', remotePeerId)
 }
 
 function syncPeerConnectionsFromPeerJs () {
@@ -344,6 +368,8 @@ async function startCall (mode, options = {}) {
   ensureAutoCallBitrateLoop?.()
   if (typeof renderChannelLists === 'function') renderChannelLists()
 
+  // Send call-start FIRST so the remote client gets the Autobase message
+  // and has time to register on PeerServer before we try to call them.
   send({
     type: 'start-call',
     roomKey: scope.roomKey,
@@ -402,10 +428,11 @@ async function joinCall (callId, mode, channelId, options = {}) {
     peerJsId: getPeerJsId()
   })
 
-  const starterPeerId = options.peerJsId || options.starterPeerJsId
-  if (starterPeerId && starterPeerId !== getPeerJsId()) {
-    callPeer(starterPeerId, stream)
-  }
+  // Don't initiate PeerJS call from the joiner side.
+  // The starter (caller) will receive our join-call Autobase message
+  // and initiate the PeerJS media connection to us via onIncomingCallJoin.
+  // We just need to be registered on PeerServer (eager init) and ready
+  // to answer via setupPeerListeners -> peer.on('call').
 }
 
 /* --- Incoming Autobase messages ------------------------------------- */
