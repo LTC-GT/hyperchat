@@ -80,31 +80,8 @@ function getDefaultIceServers () {
     {
       urls: [
         'stun:stun.l.google.com:19302',
-        'stun:stun1.l.google.com:19302',
-        'stun:stun2.l.google.com:19302',
-        'stun:stun3.l.google.com:19302',
-        'stun:stun4.l.google.com:19302'
+        'stun:stun1.l.google.com:19302'
       ]
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turns:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
     }
   ]
 }
@@ -176,6 +153,20 @@ const httpServer = createServer((req, res) => {
     scheduleLocalReset()
     res.writeHead(202, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ ok: true }))
+    return
+  }
+
+  // Serve PeerJS browser bundle from node_modules
+  if (req.url === '/vendor/peerjs.min.js') {
+    try {
+      const peerjsPath = join(__dirname, '..', 'node_modules', 'peerjs', 'dist', 'peerjs.min.js')
+      const data = readFileSync(peerjsPath)
+      res.writeHead(200, { 'Content-Type': 'application/javascript' })
+      res.end(data)
+    } catch {
+      res.writeHead(404)
+      res.end('peerjs not found')
+    }
     return
   }
 
@@ -1155,7 +1146,8 @@ wss.on('connection', (ws) => {
             scope,
             channelId,
             dmKey,
-            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null
+            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null,
+            peerJsId: msg.peerJsId || null
           }, identity)
           await room.append(startMsg)
           setActiveCall(msg.roomKey, scope, channelId, dmKey, {
@@ -1193,7 +1185,8 @@ wss.on('connection', (ws) => {
             scope,
             channelId,
             dmKey,
-            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null
+            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null,
+            peerJsId: msg.peerJsId || null
           }, identity)
           await room.append(joinMsg)
           break

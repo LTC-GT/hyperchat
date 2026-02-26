@@ -1,3 +1,146 @@
+/* ===================================================================
+   PeerJS-based video/voice calling for Quibble
+   ===================================================================
+   All WebRTC complexity (ICE, STUN, TURN, offer/answer, candidates)
+   is handled by PeerJS. Signaling goes through PeerJS cloud server.
+   The Autobase room channel is used only to announce call-start,
+   call-join, and call-end events so the UI stays in sync.
+   =================================================================== */
+
+let peerInstance = null
+const activeMediaConnections = new Map() // remotePeerJsId -> MediaConnection
+
+/* --- PeerJS identity ------------------------------------------------ */
+
+function getPeerJsId () {
+  const pub = state.identity?.publicKey
+  if (!pub) return null
+  return 'qb-' + String(pub).replace(/[^a-zA-Z0-9]/g, '').slice(0, 48)
+}
+
+/* --- PeerJS instance lifecycle -------------------------------------- */
+
+function ensurePeerInstance () {
+  if (peerInstance && !peerInstance.destroyed && !peerInstance.disconnected) return peerInstance
+
+  const myId = getPeerJsId()
+  if (!myId) return null
+
+  if (peerInstance) {
+    try { peerInstance.destroy() } catch {}
+  }
+
+  peerInstance = new Peer(myId, {
+    debug: 1,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    }
+  })
+
+  peerInstance.on('open', (id) => {
+    console.log('[PeerJS] Connected to signaling server, id:', id)
+  })
+
+  peerInstance.on('error', (err) => {
+    console.error('[PeerJS] Error:', err.type, err.message || err)
+    if (err.type === 'unavailable-id') {
+      try { peerInstance.destroy() } catch {}
+      const fallbackId = myId + '-' + Date.now().toString(36)
+      peerInstance = new Peer(fallbackId, {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
+      })
+      setupPeerListeners(peerInstance)
+    }
+  })
+
+  peerInstance.on('disconnected', () => {
+    console.warn('[PeerJS] Disconnected from signaling server, reconnecting...')
+    try { peerInstance.reconnect() } catch {}
+  })
+
+  setupPeerListeners(peerInstance)
+  return peerInstance
+}
+
+function setupPeerListeners (peer) {
+  peer.on('call', (mediaConnection) => {
+    console.log('[PeerJS] Incoming call from:', mediaConnection.peer)
+
+    if (!state.activeCall || !state.localCallStream) {
+      console.warn('[PeerJS] Ignoring incoming call - no active call state')
+      return
+    }
+
+    mediaConnection.answer(state.localCallStream)
+    wireMediaConnection(mediaConnection)
+  })
+}
+
+function wireMediaConnection (mc) {
+  const remotePeerId = mc.peer
+
+  mc.on('stream', (remoteStream) => {
+    console.log('[PeerJS] Got remote stream from:', remotePeerId)
+    state.remoteStreams.set(remotePeerId, remoteStream)
+    syncPeerConnectionsFromPeerJs()
+    renderRemoteVideos()
+  })
+
+  mc.on('close', () => {
+    console.log('[PeerJS] Media connection closed:', remotePeerId)
+    state.remoteStreams.delete(remotePeerId)
+    activeMediaConnections.delete(remotePeerId)
+    syncPeerConnectionsFromPeerJs()
+    renderRemoteVideos()
+  })
+
+  mc.on('error', (err) => {
+    console.error('[PeerJS] Media connection error:', remotePeerId, err)
+    state.remoteStreams.delete(remotePeerId)
+    activeMediaConnections.delete(remotePeerId)
+    syncPeerConnectionsFromPeerJs()
+    renderRemoteVideos()
+  })
+
+  activeMediaConnections.set(remotePeerId, mc)
+  syncPeerConnectionsFromPeerJs()
+}
+
+function callPeer (remotePeerId, localStream) {
+  const peer = ensurePeerInstance()
+  if (!peer || !localStream) return
+
+  if (activeMediaConnections.has(remotePeerId)) return
+
+  console.log('[PeerJS] Calling peer:', remotePeerId)
+  const mc = peer.call(remotePeerId, localStream)
+  if (!mc) {
+    console.error('[PeerJS] peer.call() returned null for:', remotePeerId)
+    return
+  }
+
+  wireMediaConnection(mc)
+}
+
+function syncPeerConnectionsFromPeerJs () {
+  state.peerConnections.clear()
+  for (const [peerId, mc] of activeMediaConnections) {
+    const pc = mc.peerConnection
+    if (pc) state.peerConnections.set(peerId, pc)
+  }
+}
+
+/* --- Scope helpers -------------------------------------------------- */
+
 function resolveCallScope (opts = {}) {
   const roomKey = state.activeRoom
   if (!roomKey) return null
@@ -48,53 +191,14 @@ function getCallScopeLabel (scope) {
   if (scope?.dmKey) return 'this DM'
   if (scope?.scope === 'voice') {
     const vc = getChannelById(scope.roomKey, 'voice', scope.channelId)
-    return vc ? `voice ${vc.name}` : 'voice channel'
+    return vc ? 'voice ' + vc.name : 'voice channel'
   }
 
   const tc = getChannelById(scope?.roomKey, 'text', scope?.channelId)
-  return tc ? `#${tc.name}` : '#general'
+  return tc ? '#' + tc.name : '#general'
 }
 
-async function startCall (mode, options = {}) {
-  const scope = resolveCallScope(options)
-  if (!scope) return
-  if (state.activeCall) await endCall(true)
-
-  if (isCurrentUserBannedFromRoom(scope.roomKey) || (!scope.dmKey && isCurrentUserKickedFromChannel(scope.roomKey, scope.channelId))) {
-    await appAlert('You cannot join this channel.', { title: 'Access blocked' })
-    return
-  }
-
-  const callId = `${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`
-  const stream = await requestCallMedia(mode)
-  if (!stream) return
-
-  state.activeCall = { id: callId, mode, roomKey: scope.roomKey, channelId: scope.channelId, dmKey: scope.dmKey, scope: scope.scope }
-  state.localCallStream = stream
-
-  const inlineChannelUi = Boolean(options.inlineChannelUi) && mode === 'voice'
-  if (inlineChannelUi) {
-    showInlineVoiceCallControls()
-  } else {
-    showCallStage(mode)
-    attachLocalStream(stream)
-  }
-  applyLocalMediaTrackState()
-  applyCallBitrate(state.settings.callBitrateMode || 'auto')
-  ensureAutoCallBitrateLoop?.()
-  if (typeof renderChannelLists === 'function') renderChannelLists()
-
-  send({
-    type: 'start-call',
-    roomKey: scope.roomKey,
-    scope: scope.scope,
-    channelId: scope.channelId,
-    dmKey: scope.dmKey,
-    dmParticipants: scope.dmParticipants,
-    callId,
-    mode
-  })
-}
+/* --- Media acquisition ---------------------------------------------- */
 
 async function requestCallMedia (mode) {
   try {
@@ -134,15 +238,15 @@ async function requestCallMedia (mode) {
     const stream = await navigator.mediaDevices.getUserMedia(constraints)
 
     if (mode === 'video' && camEnabled) {
-      const liveVideo = stream.getVideoTracks().find((track) => track.readyState === 'live') || null
+      const liveVideo = stream.getVideoTracks().find((t) => t.readyState === 'live') || null
       if (!liveVideo) {
         try {
           const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
           const freshTrack = fallback.getVideoTracks()[0] || null
           if (freshTrack) {
-            for (const track of stream.getVideoTracks()) {
-              stream.removeTrack(track)
-              try { track.stop() } catch {}
+            for (const t of stream.getVideoTracks()) {
+              stream.removeTrack(t)
+              try { t.stop() } catch {}
             }
             stream.addTrack(freshTrack)
           }
@@ -153,7 +257,7 @@ async function requestCallMedia (mode) {
     }
 
     if (forceMutedTracks) {
-      for (const track of stream.getTracks()) track.enabled = false
+      for (const t of stream.getTracks()) t.enabled = false
     }
     return stream
   } catch (err) {
@@ -162,65 +266,58 @@ async function requestCallMedia (mode) {
   }
 }
 
-function resolveRemotePeerStream (peerKey, event) {
-  const current = state.remoteStreams.get(peerKey) || null
-  const incoming = event?.streams?.[0] || null
+/* --- Call lifecycle ------------------------------------------------- */
 
-  let target = current || incoming || new MediaStream()
+async function startCall (mode, options = {}) {
+  const scope = resolveCallScope(options)
+  if (!scope) return
+  if (state.activeCall) await endCall(true)
 
-  const mergeTrack = (track) => {
-    if (!track) return
-    const exists = target.getTracks().some((candidate) => candidate.id === track.id)
-    if (!exists) target.addTrack(track)
+  if (isCurrentUserBannedFromRoom(scope.roomKey) || (!scope.dmKey && isCurrentUserKickedFromChannel(scope.roomKey, scope.channelId))) {
+    await appAlert('You cannot join this channel.', { title: 'Access blocked' })
+    return
   }
 
-  if (incoming) {
-    if (!current) {
-      target = incoming
-    } else if (current.id !== incoming.id) {
-      for (const track of current.getTracks()) mergeTrack(track)
-    }
+  const callId = Date.now().toString(36) + '-' + Math.random().toString(16).slice(2, 8)
+  const stream = await requestCallMedia(mode)
+  if (!stream) return
 
-    for (const track of incoming.getTracks()) mergeTrack(track)
+  ensurePeerInstance()
+
+  state.activeCall = { id: callId, mode, roomKey: scope.roomKey, channelId: scope.channelId, dmKey: scope.dmKey, scope: scope.scope }
+  state.localCallStream = stream
+
+  const inlineChannelUi = Boolean(options.inlineChannelUi) && mode === 'voice'
+  if (inlineChannelUi) {
+    showInlineVoiceCallControls()
+  } else {
+    showCallStage(mode)
+    attachLocalStream(stream)
   }
+  applyLocalMediaTrackState()
+  applyCallBitrate(state.settings.callBitrateMode || 'auto')
+  ensureAutoCallBitrateLoop?.()
+  if (typeof renderChannelLists === 'function') renderChannelLists()
 
-  mergeTrack(event?.track || null)
-  return target
-}
-
-async function onIncomingCallStart (msg, roomKey) {
-  if (!callMatchesCurrentView(msg?.data, roomKey)) return
-  if (msg.sender === state.identity?.publicKey) return
-  if (state.activeCall) return
-
-  const callId = msg.data?.callId
-  const mode = msg.data?.mode || 'voice'
-  const channelId = msg.data?.channelId || 'general'
-  const scope = {
-    scope: msg.data?.scope || (msg.data?.dmKey ? 'dm' : 'text'),
-    roomKey,
-    channelId,
-    dmKey: msg.data?.dmKey || null,
-    dmParticipants: Array.isArray(msg.data?.dmParticipants) ? msg.data.dmParticipants : null
-  }
-  if (!callId) return
-
-  const label = getCallScopeLabel(scope)
-  startRingtoneLoop()
-  const ok = await appConfirm(`${msg.senderName || 'Someone'} started a ${mode} call in ${label}. Join?`, {
-    title: 'Incoming call',
-    confirmText: 'Join'
+  send({
+    type: 'start-call',
+    roomKey: scope.roomKey,
+    scope: scope.scope,
+    channelId: scope.channelId,
+    dmKey: scope.dmKey,
+    dmParticipants: scope.dmParticipants,
+    callId,
+    mode,
+    peerJsId: getPeerJsId()
   })
-  stopRingtoneLoop()
-  if (!ok) return
-
-  joinCall(callId, mode, channelId, scope)
 }
 
 async function joinCall (callId, mode, channelId, options = {}) {
   stopRingtoneLoop()
   const stream = await requestCallMedia(mode)
   if (!stream || !state.activeRoom) return
+
+  ensurePeerInstance()
 
   const scope = {
     scope: options.scope || (options.dmKey ? 'dm' : (options.inlineChannelUi ? 'voice' : 'text')),
@@ -254,8 +351,46 @@ async function joinCall (callId, mode, channelId, options = {}) {
     dmKey: scope.dmKey,
     dmParticipants: scope.dmParticipants,
     callId,
-    mode
+    mode,
+    peerJsId: getPeerJsId()
   })
+
+  const starterPeerId = options.peerJsId || options.starterPeerJsId
+  if (starterPeerId && starterPeerId !== getPeerJsId()) {
+    callPeer(starterPeerId, stream)
+  }
+}
+
+/* --- Incoming Autobase messages ------------------------------------- */
+
+async function onIncomingCallStart (msg, roomKey) {
+  if (!callMatchesCurrentView(msg?.data, roomKey)) return
+  if (msg.sender === state.identity?.publicKey) return
+  if (state.activeCall) return
+
+  const callId = msg.data?.callId
+  const mode = msg.data?.mode || 'voice'
+  const channelId = msg.data?.channelId || 'general'
+  const starterPeerJsId = msg.data?.peerJsId || null
+  const scope = {
+    scope: msg.data?.scope || (msg.data?.dmKey ? 'dm' : 'text'),
+    roomKey,
+    channelId,
+    dmKey: msg.data?.dmKey || null,
+    dmParticipants: Array.isArray(msg.data?.dmParticipants) ? msg.data.dmParticipants : null
+  }
+  if (!callId) return
+
+  const label = getCallScopeLabel(scope)
+  startRingtoneLoop()
+  const ok = await appConfirm((msg.senderName || 'Someone') + ' started a ' + mode + ' call in ' + label + '. Join?', {
+    title: 'Incoming call',
+    confirmText: 'Join'
+  })
+  stopRingtoneLoop()
+  if (!ok) return
+
+  joinCall(callId, mode, channelId, Object.assign({}, scope, { peerJsId: starterPeerJsId }))
 }
 
 async function onIncomingCallJoin (msg, roomKey) {
@@ -264,88 +399,14 @@ async function onIncomingCallJoin (msg, roomKey) {
   if (!callMatchesActiveCallScope(msg?.data || {})) return
   if (msg.sender === state.identity?.publicKey) return
 
-  try {
-    await ensurePeerConnection(msg.sender)
-    const pc = state.peerConnections.get(msg.sender)
-    if (!pc) return
-
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
-    await waitForIceGatheringComplete(pc)
-
-    send({
-      type: 'call-signal',
-      roomKey: state.activeRoom,
-      channelId: state.activeCall.channelId,
-      dmKey: state.activeCall.dmKey || null,
-      callId: state.activeCall.id,
-      target: msg.sender,
-      signal: { type: 'offer', sdp: pc.localDescription?.sdp || offer.sdp }
-    })
-  } catch (err) {
-    console.error('Failed to create offer for peer', msg.sender, err)
+  const remotePeerId = msg.data?.peerJsId
+  if (remotePeerId && remotePeerId !== getPeerJsId() && state.localCallStream) {
+    callPeer(remotePeerId, state.localCallStream)
   }
 }
 
-async function onIncomingCallSignal (msg, roomKey) {
-  if (!state.activeRoom || state.activeRoom !== roomKey) return
-  if (!state.activeCall || !msg?.data?.signal) return
-  if (!callMatchesActiveCallScope(msg.data)) return
-  if (msg.data.target && msg.data.target !== state.identity?.publicKey) return
-  if (msg.sender === state.identity?.publicKey) return
-
-  try {
-    await ensurePeerConnection(msg.sender)
-    const pc = state.peerConnections.get(msg.sender)
-    if (!pc) return
-
-    const signal = msg.data.signal
-
-    if (signal.type === 'offer') {
-      await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }))
-      drainPendingIceCandidates(msg.sender)
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
-      await waitForIceGatheringComplete(pc)
-
-      send({
-        type: 'call-signal',
-        roomKey: state.activeRoom,
-        channelId: state.activeCall.channelId,
-        dmKey: state.activeCall.dmKey || null,
-        callId: state.activeCall.id,
-        target: msg.sender,
-        signal: { type: 'answer', sdp: pc.localDescription?.sdp || answer.sdp }
-      })
-      return
-    }
-
-    if (signal.type === 'answer') {
-      await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }))
-      drainPendingIceCandidates(msg.sender)
-      return
-    }
-
-    if (signal.type === 'candidate') {
-      if (!signal.candidate) return
-      const candidate = new RTCIceCandidate({
-        candidate: signal.candidate,
-        sdpMid: signal.sdpMid ?? null,
-        sdpMLineIndex: signal.sdpMLineIndex ?? null
-      })
-      if (pc.remoteDescription && pc.remoteDescription.type) {
-        await pc.addIceCandidate(candidate)
-      } else {
-        if (!state.pendingIceCandidates) state.pendingIceCandidates = new Map()
-        const pending = state.pendingIceCandidates.get(msg.sender) || []
-        pending.push(candidate)
-        state.pendingIceCandidates.set(msg.sender, pending)
-      }
-      return
-    }
-  } catch (err) {
-    console.error('Call signal handling error:', err)
-  }
+function onIncomingCallSignal (_msg, _roomKey) {
+  // PeerJS handles all WebRTC signaling internally - no-op
 }
 
 function onIncomingCallEnd (msg, roomKey) {
@@ -355,270 +416,7 @@ function onIncomingCallEnd (msg, roomKey) {
   endCall(false)
 }
 
-const DEFAULT_RTC_ICE_SERVERS = [
-  {
-    urls: [
-      'stun:stun.l.google.com:19302',
-      'stun:stun1.l.google.com:19302',
-      'stun:stun2.l.google.com:19302',
-      'stun:stun3.l.google.com:19302',
-      'stun:stun4.l.google.com:19302'
-    ]
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
-  },
-  {
-    urls: 'turns:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
-  }
-]
-
-function getRtcIceServers () {
-  if (Array.isArray(state.rtcIceServers) && state.rtcIceServers.length > 0) {
-    return state.rtcIceServers
-  }
-  return DEFAULT_RTC_ICE_SERVERS
-}
-
-const PEER_DISCONNECT_GRACE_MS = 12000
-const peerDisconnectTimers = new Map()
-const peerIceRestartAttempts = new Map()
-const MAX_ICE_RESTART_ATTEMPTS = 3
-
-function drainPendingIceCandidates (peerKey) {
-  if (!state.pendingIceCandidates) return
-  const pending = state.pendingIceCandidates.get(peerKey)
-  if (!pending || pending.length === 0) return
-  const pc = state.peerConnections.get(peerKey)
-  if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) return
-  for (const candidate of pending) {
-    try { pc.addIceCandidate(candidate) } catch (err) { console.warn('Failed to add buffered ICE candidate:', err) }
-  }
-  state.pendingIceCandidates.delete(peerKey)
-}
-
-async function attemptIceRestart (peerKey) {
-  if (!state.activeCall || !state.activeRoom) return
-  const pc = state.peerConnections.get(peerKey)
-  if (!pc) return
-
-  const attempts = (peerIceRestartAttempts.get(peerKey) || 0) + 1
-  peerIceRestartAttempts.set(peerKey, attempts)
-  if (attempts > MAX_ICE_RESTART_ATTEMPTS) {
-    console.warn(`ICE restart limit reached for peer ${peerKey}, giving up`)
-    removePeerConnection(peerKey, pc)
-    return
-  }
-
-  console.log(`ICE restart attempt ${attempts}/${MAX_ICE_RESTART_ATTEMPTS} for peer ${peerKey}`)
-  if (dom.callStatus) dom.callStatus.textContent = `Reconnecting… (attempt ${attempts})`
-
-  try {
-    pc.restartIce()
-    const offer = await pc.createOffer({ iceRestart: true })
-    await pc.setLocalDescription(offer)
-    await waitForIceGatheringComplete(pc)
-
-    send({
-      type: 'call-signal',
-      roomKey: state.activeRoom,
-      channelId: state.activeCall.channelId,
-      dmKey: state.activeCall.dmKey || null,
-      callId: state.activeCall.id,
-      target: peerKey,
-      signal: { type: 'offer', sdp: pc.localDescription?.sdp || offer.sdp }
-    })
-  } catch (err) {
-    console.error('ICE restart failed:', err)
-    schedulePeerDisconnectCleanup(peerKey, pc)
-  }
-}
-
-function clearPeerDisconnectTimer (peerKey) {
-  const timer = peerDisconnectTimers.get(peerKey)
-  if (timer) clearTimeout(timer)
-  peerDisconnectTimers.delete(peerKey)
-}
-
-function clearPeerConnectionState (peerKey) {
-  clearPeerDisconnectTimer(peerKey)
-}
-
-function removePeerConnection (peerKey, pc = null) {
-  const current = state.peerConnections.get(peerKey)
-  if (pc && current && current !== pc) return
-
-  clearPeerConnectionState(peerKey)
-  if (!current) return
-
-  try { current.close() } catch {}
-  state.peerConnections.delete(peerKey)
-  state.remoteStreams.delete(peerKey)
-  renderRemoteVideos()
-}
-
-function schedulePeerDisconnectCleanup (peerKey, pc) {
-  clearPeerDisconnectTimer(peerKey)
-  const timer = setTimeout(() => {
-    const current = state.peerConnections.get(peerKey)
-    if (!current || current !== pc) return
-    if (!['disconnected', 'failed', 'closed'].includes(current.connectionState)) return
-    removePeerConnection(peerKey, current)
-  }, PEER_DISCONNECT_GRACE_MS)
-  peerDisconnectTimers.set(peerKey, timer)
-}
-
-async function waitForIceGatheringComplete (pc, timeoutMs = 6000) {
-  if (!pc || pc.iceGatheringState === 'complete') return
-
-  await new Promise((resolve) => {
-    let done = false
-    const finish = () => {
-      if (done) return
-      done = true
-      try { pc.removeEventListener('icegatheringstatechange', onStateChange) } catch {}
-      clearTimeout(timer)
-      resolve()
-    }
-    const onStateChange = () => {
-      if (pc.iceGatheringState === 'complete') finish()
-    }
-    const timer = setTimeout(finish, timeoutMs)
-    try { pc.addEventListener('icegatheringstatechange', onStateChange) } catch {}
-    if (pc.iceGatheringState === 'complete') finish()
-  })
-}
-
-async function ensurePeerConnection (peerKey) {
-  if (state.peerConnections.has(peerKey)) return
-  if (!state.localCallStream || !state.activeCall) return
-
-  const pc = new RTCPeerConnection({
-    iceServers: getRtcIceServers(),
-    iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 4,
-    bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require'
-  })
-
-  const localAudioTrack = state.localCallStream.getAudioTracks()[0] || null
-  if (localAudioTrack) pc.addTrack(localAudioTrack, state.localCallStream)
-
-  const screenTrack = state.callScreenStream?.getVideoTracks?.()[0] || null
-  const localCameraTrack = state.localCallStream.getVideoTracks()[0] || null
-  const localVideoTrack = screenTrack || localCameraTrack
-  if (localVideoTrack) {
-    const sourceStream = screenTrack ? state.callScreenStream : state.localCallStream
-    pc.addTrack(localVideoTrack, sourceStream)
-  }
-
-  pc.onicecandidate = (event) => {
-    if (!event.candidate || !state.activeCall || !state.activeRoom) return
-    send({
-      type: 'call-signal',
-      roomKey: state.activeRoom,
-      channelId: state.activeCall.channelId,
-      dmKey: state.activeCall.dmKey || null,
-      callId: state.activeCall.id,
-      target: peerKey,
-      signal: {
-        type: 'candidate',
-        candidate: event.candidate.candidate,
-        sdpMid: event.candidate.sdpMid,
-        sdpMLineIndex: event.candidate.sdpMLineIndex
-      }
-    })
-  }
-
-  pc.ontrack = (event) => {
-    const stream = resolveRemotePeerStream(peerKey, event)
-    const track = event?.track || null
-    if (track) {
-      track.onunmute = () => renderRemoteVideos()
-      track.onended = () => renderRemoteVideos()
-    }
-    state.remoteStreams.set(peerKey, stream)
-    renderRemoteVideos()
-  }
-
-  pc.onconnectionstatechange = () => {
-    if (state.settings.callBitrateMode === 'auto') applyCallBitrate('auto')
-
-    if (pc.connectionState === 'connected') {
-      clearPeerConnectionState(peerKey)
-      peerIceRestartAttempts.delete(peerKey)
-      if (dom.callStatus) {
-        const mode = state.activeCall?.mode || 'voice'
-        dom.callStatus.textContent = `${mode[0].toUpperCase() + mode.slice(1)} call active`
-      }
-      return
-    }
-
-    if (pc.connectionState === 'disconnected') {
-      if (dom.callStatus) dom.callStatus.textContent = 'Connection interrupted — waiting…'
-      schedulePeerDisconnectCleanup(peerKey, pc)
-      return
-    }
-
-    if (pc.connectionState === 'failed') {
-      clearPeerDisconnectTimer(peerKey)
-      attemptIceRestart(peerKey)
-      return
-    }
-
-    if (pc.connectionState === 'closed') {
-      peerIceRestartAttempts.delete(peerKey)
-      removePeerConnection(peerKey, pc)
-    }
-  }
-
-  pc.oniceconnectionstatechange = () => {
-    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-      clearPeerConnectionState(peerKey)
-      return
-    }
-
-    if (pc.iceConnectionState === 'failed') {
-      attemptIceRestart(peerKey)
-    }
-  }
-
-  state.peerConnections.set(peerKey, pc)
-  preferAv1VideoCodec(pc)
-}
-
-function preferAv1VideoCodec (pc) {
-  try {
-    const transceivers = pc.getTransceivers?.() || []
-    for (const transceiver of transceivers) {
-      if (transceiver.receiver?.track?.kind !== 'video') continue
-      const codecs = RTCRtpReceiver.getCapabilities?.('video')?.codecs || []
-      const av1 = codecs.filter(c => c.mimeType === 'video/AV1')
-      const vp9 = codecs.filter(c => c.mimeType === 'video/VP9')
-      const rest = codecs.filter(c => c.mimeType !== 'video/AV1' && c.mimeType !== 'video/VP9')
-      const preferred = [...av1, ...vp9, ...rest]
-      if (preferred.length > 0 && typeof transceiver.setCodecPreferences === 'function') {
-        transceiver.setCodecPreferences(preferred)
-      }
-    }
-  } catch (err) {
-    console.warn('Could not set codec preferences:', err)
-  }
-}
+/* --- End call ------------------------------------------------------- */
 
 async function endCall (notifyRemote) {
   if (!state.activeCall) return
@@ -639,24 +437,22 @@ async function endCall (notifyRemote) {
     })
   }
 
+  for (const mc of activeMediaConnections.values()) {
+    try { mc.close() } catch {}
+  }
+  activeMediaConnections.clear()
+
   for (const pc of state.peerConnections.values()) {
     try { pc.close() } catch {}
   }
-
-  for (const peerKey of state.peerConnections.keys()) {
-    clearPeerConnectionState(peerKey)
-  }
-
   state.peerConnections.clear()
   state.remoteStreams.clear()
-  peerIceRestartAttempts.clear()
-  if (state.pendingIceCandidates) state.pendingIceCandidates.clear()
 
   if (state.localCallStream) {
-    for (const track of state.localCallStream.getTracks()) track.stop()
+    for (const t of state.localCallStream.getTracks()) t.stop()
   }
   if (state.callScreenStream) {
-    for (const track of state.callScreenStream.getTracks()) track.stop()
+    for (const t of state.callScreenStream.getTracks()) t.stop()
   }
 
   state.localCallStream = null
@@ -665,6 +461,8 @@ async function endCall (notifyRemote) {
   hideCallStage()
   if (typeof renderChannelLists === 'function') renderChannelLists()
 }
+
+/* --- UI helpers ----------------------------------------------------- */
 
 function showInlineVoiceCallControls () {
   dom.callStage?.classList.add('hidden')
@@ -680,7 +478,7 @@ function showInlineVoiceCallControls () {
 function showCallStage (mode) {
   dom.callStage?.classList.remove('hidden')
   dom.btnEndCall?.classList.remove('hidden')
-  dom.callStatus.textContent = `${mode[0].toUpperCase() + mode.slice(1)} call active`
+  dom.callStatus.textContent = mode[0].toUpperCase() + mode.slice(1) + ' call active'
 
   dom.btnVoice.classList.add('text-quibble-green')
   dom.btnVideoCall.classList.toggle('text-quibble-green', mode === 'video')
@@ -715,4 +513,10 @@ function attachLocalStream (stream) {
   dom.localVideo.srcObject = stream
   dom.localVideo.classList.remove('hidden')
   if (typeof bindCallVideoFullscreen === 'function') bindCallVideoFullscreen(dom.localVideo, 'you')
+}
+
+/* --- Compat stubs (referenced by other scripts) --------------------- */
+
+function getRtcIceServers () {
+  return [{ urls: 'stun:stun.l.google.com:19302' }]
 }
