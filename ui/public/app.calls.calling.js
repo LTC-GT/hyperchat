@@ -270,6 +270,7 @@ async function onIncomingCallJoin (msg, roomKey) {
 
   const offer = await pc.createOffer()
   await pc.setLocalDescription(offer)
+  await waitForIceGatheringComplete(pc)
 
   send({
     type: 'call-signal',
@@ -300,6 +301,7 @@ async function onIncomingCallSignal (msg, roomKey) {
     await flushRemoteIceCandidates(msg.sender, pc)
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
+    await waitForIceGatheringComplete(pc)
 
     send({
       type: 'call-signal',
@@ -347,14 +349,8 @@ function onIncomingCallEnd (msg, roomKey) {
 const DEFAULT_RTC_ICE_SERVERS = [{
   urls: [
     'stun:stun.l.google.com:19302',
-    'stun:stun1.l.google.com:19302',
-    'stun:stun2.l.google.com:19302',
-    'turn:openrelay.metered.ca:80',
-    'turn:openrelay.metered.ca:443',
-    'turn:openrelay.metered.ca:443?transport=tcp'
-  ],
-  username: 'openrelayproject',
-  credential: 'openrelayproject'
+    'stun:stun1.l.google.com:19302'
+  ]
 }]
 
 function getRtcIceServers () {
@@ -439,6 +435,7 @@ async function attemptPeerIceRestart (peerKey, pc) {
     if (typeof pc.restartIce === 'function') pc.restartIce()
     const offer = await pc.createOffer({ iceRestart: true })
     await pc.setLocalDescription(offer)
+    await waitForIceGatheringComplete(pc)
 
     send({
       type: 'call-signal',
@@ -454,6 +451,27 @@ async function attemptPeerIceRestart (peerKey, pc) {
     console.warn('ICE restart attempt failed:', err)
     return false
   }
+}
+
+async function waitForIceGatheringComplete (pc, timeoutMs = 2200) {
+  if (!pc || pc.iceGatheringState === 'complete') return
+
+  await new Promise((resolve) => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      try { pc.removeEventListener('icegatheringstatechange', onStateChange) } catch {}
+      clearTimeout(timer)
+      resolve()
+    }
+    const onStateChange = () => {
+      if (pc.iceGatheringState === 'complete') finish()
+    }
+    const timer = setTimeout(finish, timeoutMs)
+    try { pc.addEventListener('icegatheringstatechange', onStateChange) } catch {}
+    if (pc.iceGatheringState === 'complete') finish()
+  })
 }
 
 async function ensurePeerConnection (peerKey) {

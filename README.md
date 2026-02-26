@@ -73,7 +73,7 @@ Notes:
 
 - If you see `File descriptor could not be locked`, another process is likely still using the same Corestore path. The Web UI now retries briefly, then exits with a clear error instead of switching to temporary storage (to prevent rooms from appearing to disappear across restarts).
 - You can set your own UI storage path with `QUIBBLE_UI_STORAGE=/path/to/storage pnpm dev`.
-- WebRTC video calls now use a STUN+TURN baseline by default. To use your own ICE config, set `QUIBBLE_ICE_SERVERS_JSON` to a JSON array of ICE server entries, e.g. `QUIBBLE_ICE_SERVERS_JSON='[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:turn.example.com:3478"],"username":"user","credential":"pass"}]' pnpm dev`.
+- WebRTC video calls use a LAN-friendly STUN baseline by default. For stricter NAT/firewall environments, provide your own TURN/STUN via `QUIBBLE_ICE_SERVERS_JSON`, e.g. `QUIBBLE_ICE_SERVERS_JSON='[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:turn.example.com:3478"],"username":"user","credential":"pass"}]' pnpm dev`.
 - Prefer Node LTS (18/20/22). Very new Node versions may be unstable with native storage dependencies.
 - Tailwind is built locally with **Tailwind v4 CLI** (`@tailwindcss/cli`), not via CDN.
 
