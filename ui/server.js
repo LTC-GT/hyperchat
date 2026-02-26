@@ -177,6 +177,7 @@ const wsVoiceSessions = new Map() // ws -> Set<sessionId>
 const voiceSessions = new Map() // sessionId -> { roomKey, channels:Set, sockets:Set, wsClients:Set }
 const wsVideoSessions = new Map() // ws -> Set<sessionId>
 const videoSessions = new Map() // sessionId -> { roomKey, channels:Set, sockets:Set, wsClients:Set }
+const activeCallsByScope = new Map() // `${roomKey}|${scope}|${channelId}|${dmKey}` -> { callId, startedBy, startedAt }
 
 // ─── Profile persistence (avatar, name stored alongside identity) ───
 const { profilePath, loadProfile, saveProfile } = createProfileStore(identity)
@@ -187,6 +188,45 @@ function normalizePresenceStatus (value) {
   if (status === 'active' || status === 'away') return status
   if (status === 'online') return 'active'
   return 'away'
+}
+
+function buildCallScopeKey (roomKey, scope, channelId, dmKey) {
+  const roomPart = String(roomKey || '')
+  const dmPart = dmKey ? String(dmKey) : ''
+  const normalizedScope = String(scope || (dmPart ? 'dm' : 'text'))
+  const normalizedChannel = dmPart ? '' : String(channelId || 'general')
+  return `${roomPart}|${normalizedScope}|${normalizedChannel}|${dmPart}`
+}
+
+function setActiveCall (roomKey, scope, channelId, dmKey, payload) {
+  const key = buildCallScopeKey(roomKey, scope, channelId, dmKey)
+  activeCallsByScope.set(key, payload)
+}
+
+function getActiveCall (roomKey, scope, channelId, dmKey) {
+  const key = buildCallScopeKey(roomKey, scope, channelId, dmKey)
+  return activeCallsByScope.get(key) || null
+}
+
+function clearActiveCallByRoomCallId (roomKey, callId) {
+  const roomPart = String(roomKey || '')
+  const id = String(callId || '')
+  if (!roomPart || !id) return
+
+  for (const [key, value] of activeCallsByScope.entries()) {
+    if (!key.startsWith(`${roomPart}|`)) continue
+    if (String(value?.callId || '') !== id) continue
+    activeCallsByScope.delete(key)
+  }
+}
+
+function clearActiveCallsForRoom (roomKey) {
+  const roomPart = String(roomKey || '')
+  if (!roomPart) return
+
+  for (const key of activeCallsByScope.keys()) {
+    if (key.startsWith(`${roomPart}|`)) activeCallsByScope.delete(key)
+  }
 }
 
 function loadPersistedRooms () {
@@ -1000,6 +1040,7 @@ wss.on('connection', (ws) => {
 
           const disbandMsg = systemMsg('room-disband', { by: requesterHex }, identity)
           await room.append(disbandMsg)
+          clearActiveCallsForRoom(msg.roomKey)
           break
         }
 
@@ -1024,6 +1065,15 @@ wss.on('connection', (ws) => {
             }
           }
 
+          const activeCall = getActiveCall(msg.roomKey, scope, channelId, dmKey)
+          if (activeCall && String(activeCall.startedBy || '') !== senderHex) {
+            const alreadyMsg = dmKey
+              ? 'Call already in progress — this user is already calling you.'
+              : 'Call already in progress in this channel.'
+            ws.send(JSON.stringify({ type: 'error', message: alreadyMsg }))
+            break
+          }
+
           const startMsg = systemMsg('call-start', {
             callId: msg.callId,
             mode: msg.mode,
@@ -1033,6 +1083,11 @@ wss.on('connection', (ws) => {
             dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null
           }, identity)
           await room.append(startMsg)
+          setActiveCall(msg.roomKey, scope, channelId, dmKey, {
+            callId: String(msg.callId),
+            startedBy: senderHex,
+            startedAt: Date.now()
+          })
           break
         }
 
@@ -1094,6 +1149,7 @@ wss.on('connection', (ws) => {
             dmKey: msg.dmKey ? String(msg.dmKey) : null
           }, identity)
           await room.append(endMsg)
+          clearActiveCallByRoomCallId(msg.roomKey, msg.callId)
           break
         }
 

@@ -132,6 +132,26 @@ async function requestCallMedia (mode) {
     }
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+    if (mode === 'video' && camEnabled) {
+      const liveVideo = stream.getVideoTracks().find((track) => track.readyState === 'live') || null
+      if (!liveVideo) {
+        try {
+          const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+          const freshTrack = fallback.getVideoTracks()[0] || null
+          if (freshTrack) {
+            for (const track of stream.getVideoTracks()) {
+              stream.removeTrack(track)
+              try { track.stop() } catch {}
+            }
+            stream.addTrack(freshTrack)
+          }
+        } catch (videoErr) {
+          console.warn('Video fallback capture failed:', videoErr)
+        }
+      }
+    }
+
     if (forceMutedTracks) {
       for (const track of stream.getTracks()) track.enabled = false
     }
@@ -140,6 +160,32 @@ async function requestCallMedia (mode) {
     console.error('Call media access failed:', err)
     return null
   }
+}
+
+function resolveRemotePeerStream (peerKey, event) {
+  const current = state.remoteStreams.get(peerKey) || null
+  const incoming = event?.streams?.[0] || null
+
+  let target = current || incoming || new MediaStream()
+
+  const mergeTrack = (track) => {
+    if (!track) return
+    const exists = target.getTracks().some((candidate) => candidate.id === track.id)
+    if (!exists) target.addTrack(track)
+  }
+
+  if (incoming) {
+    if (!current) {
+      target = incoming
+    } else if (current.id !== incoming.id) {
+      for (const track of current.getTracks()) mergeTrack(track)
+    }
+
+    for (const track of incoming.getTracks()) mergeTrack(track)
+  }
+
+  mergeTrack(event?.track || null)
+  return target
 }
 
 async function onIncomingCallStart (msg, roomKey) {
@@ -318,8 +364,12 @@ async function ensurePeerConnection (peerKey) {
   }
 
   pc.ontrack = (event) => {
-    const stream = event.streams?.[0]
-    if (!stream) return
+    const stream = resolveRemotePeerStream(peerKey, event)
+    const track = event?.track || null
+    if (track) {
+      track.onunmute = () => renderRemoteVideos()
+      track.onended = () => renderRemoteVideos()
+    }
     state.remoteStreams.set(peerKey, stream)
     renderRemoteVideos()
   }
