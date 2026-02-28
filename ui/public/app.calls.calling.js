@@ -33,19 +33,36 @@ function getPeerJsId () {
 
 /* ─── ICE config (STUN + TURN for cross-network P2P) ──────────────── */
 
+const STUN_PRESETS = {
+  google:     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  metered:    { urls: 'stun:stun.relay.metered.ca:80' },
+  twilio:     { urls: 'stun:global.stun.twilio.com:3478' },
+  cloudflare: { urls: 'stun:stun.cloudflare.com:3478' },
+  mozilla:    { urls: 'stun:stun.services.mozilla.com:3478' }
+}
+
+function getStunServerEntry () {
+  const preset = state.settings.stunPreset || 'google'
+  if (preset === 'custom') {
+    const url = (state.settings.customStunUrl || '').trim()
+    if (url) return { urls: url }
+    return STUN_PRESETS.google
+  }
+  return STUN_PRESETS[preset] || STUN_PRESETS.google
+}
+
 function getPeerJsIceConfig () {
   const hasCustom = state.rtcIceServers && state.rtcIceServers.length > 0
   const servers = hasCustom
     ? state.rtcIceServers
     : [
-        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-        { urls: 'stun:stun.relay.metered.ca:80' },
+        getStunServerEntry(),
         { urls: 'turn:global.relay.metered.ca:80', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
         { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
         { urls: 'turn:global.relay.metered.ca:443', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
         { urls: 'turn:global.relay.metered.ca:443?transport=tcp', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' }
       ]
-  return { iceServers: servers }
+  return { iceServers: servers, sdpSemantics: 'unified-plan' }
 }
 
 /* ─── PeerJS instance lifecycle ────────────────────────────────────── */
@@ -136,9 +153,16 @@ function ensurePeerInstance () {
         return
       }
 
-      // Answer immediately with our local stream (same as example)
-      incomingCall.answer(state.localCallStream)
+      // Skip if we already have an active connection to this peer
+      if (activeMediaConnections.has(incomingCall.peer)) {
+        console.log('[PeerJS] Already connected to', incomingCall.peer, '— ignoring duplicate')
+        return
+      }
+
+      // Wire handlers FIRST, then answer — ensures the stream handler
+      // is registered before the remote stream arrives.
       wireMediaConnection(incomingCall)
+      incomingCall.answer(state.localCallStream)
     })
   })
 
@@ -211,16 +235,26 @@ async function callPeer (remotePeerId, localStream) {
       continue
     }
 
-    const result = await raceCallResult(mc, remotePeerId, 8000)
+    // Wire the MediaConnection IMMEDIATELY so the 'stream' handler is
+    // registered *before* the remote stream arrives.  The old code called
+    // wireMediaConnection() only *after* raceCallResult consumed the
+    // stream event, which meant the handler was too late and the caller
+    // never rendered the remote video.
+    wireMediaConnection(mc)
+
+    const result = await waitForCallResult(remotePeerId, mc, 8000)
 
     if (result === 'stream') {
-      wireMediaConnection(mc)
       console.log('[PeerJS] Connected to', remotePeerId)
       return
     }
 
     // Clean up failed attempt
+    activeMediaConnections.delete(remotePeerId)
+    state.remoteStreams.delete(remotePeerId)
+    state.peerConnections.delete(remotePeerId)
     try { mc.close() } catch {}
+    renderRemoteVideos()
 
     if (attempt < MAX_ATTEMPTS) {
       console.log(`[PeerJS] Attempt ${attempt} → ${result}. Retrying in ${RETRY_DELAY} ms…`)
@@ -232,9 +266,13 @@ async function callPeer (remotePeerId, localStream) {
 }
 
 /**
- * Race the call result: resolves 'stream' | 'error' | 'close' | 'peer-unavailable' | 'timeout'.
+ * Wait for the call to succeed (remote stream added to state.remoteStreams
+ * by wireMediaConnection's 'stream' handler) or fail.
+ *
+ * This does NOT register its own 'stream' handler — that is done by
+ * wireMediaConnection() before this function is called.
  */
-function raceCallResult (mc, remotePeerId, timeoutMs) {
+function waitForCallResult (remotePeerId, mc, timeoutMs) {
   return new Promise((resolve) => {
     let settled = false
     const settle = (v) => {
@@ -245,19 +283,25 @@ function raceCallResult (mc, remotePeerId, timeoutMs) {
       resolve(v)
     }
 
+    // If the stream already arrived (wireMediaConnection stored it), resolve immediately.
+    if (state.remoteStreams.has(remotePeerId)) { settle('stream'); return }
+
     const timer = setTimeout(() => settle('timeout'), timeoutMs)
+
+    // Poll: the 'stream' event is consumed by wireMediaConnection,
+    // so we also listen and check via the map.
     mc.on('stream', () => settle('stream'))
-    mc.on('error',  () => settle('error'))
+    mc.on('error',  (err) => { console.warn('[PeerJS] call error:', err); settle('error') })
     mc.on('close',  () => settle('close'))
 
-    // PeerJS emits 'peer-unavailable' on the Peer, not the MediaConnection
+    // PeerJS emits 'peer-unavailable' on the Peer, not the MediaConnection.
     const onPeerError = (err) => {
       if (err.type === 'peer-unavailable' && String(err.message || '').includes(remotePeerId)) {
         settle('peer-unavailable')
       }
     }
-    peerInstance.on('error', onPeerError)
-    function removePeerListener () { try { peerInstance.off('error', onPeerError) } catch {} }
+    if (peerInstance) peerInstance.on('error', onPeerError)
+    function removePeerListener () { try { if (peerInstance) peerInstance.off('error', onPeerError) } catch {} }
   })
 }
 

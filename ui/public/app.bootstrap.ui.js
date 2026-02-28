@@ -109,6 +109,12 @@ function hydrateSettingsModal () {
   dom.settingsNotificationTone.value = state.settings.notificationTone
   dom.settingsRingtone.value = state.settings.ringtone
 
+  if (dom.settingsStunPreset) {
+    dom.settingsStunPreset.value = state.settings.stunPreset || 'google'
+    toggleCustomStunVisibility(state.settings.stunPreset)
+  }
+  if (dom.settingsCustomStunUrl) dom.settingsCustomStunUrl.value = state.settings.customStunUrl || ''
+
   if (state.profile.avatar) {
     dom.settingsAvatarPreview.innerHTML = `<img src="${state.profile.avatar}" class="w-full h-full object-cover">`
   } else {
@@ -301,6 +307,15 @@ async function refreshMediaDevices () {
   }
 }
 
+function toggleCustomStunVisibility (preset) {
+  if (!dom.settingsCustomStunWrap) return
+  dom.settingsCustomStunWrap.classList.toggle('hidden', preset !== 'custom')
+}
+
+dom.settingsStunPreset?.addEventListener('change', () => {
+  toggleCustomStunVisibility(dom.settingsStunPreset.value)
+})
+
 dom.btnUserSettings?.addEventListener('click', openUserSettings)
 dom.btnUserSettingsSidebar?.addEventListener('click', (e) => {
   e.stopPropagation()
@@ -372,6 +387,8 @@ dom.btnSaveUserSettings?.addEventListener('click', async () => {
   state.settings.recordSelfInCall = Boolean(dom.settingsRecordSelf?.checked)
   state.settings.notificationTone = dom.settingsNotificationTone?.value || 'chime'
   state.settings.ringtone = dom.settingsRingtone?.value || 'ring-bell'
+  state.settings.stunPreset = dom.settingsStunPreset?.value || 'google'
+  state.settings.customStunUrl = (dom.settingsCustomStunUrl?.value || '').trim()
   saveClientSettings()
   if (state.activeCall && typeof applyCallBitrate === 'function') {
     applyCallBitrate(state.settings.callBitrateMode || 'auto')

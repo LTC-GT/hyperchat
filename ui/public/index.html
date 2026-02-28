@@ -764,6 +764,21 @@
               <input id="settingsRecordSelf" type="checkbox" class="accent-quibble-blurple" checked>
               Include self in call recordings
             </label>
+
+            <label class="text-xs uppercase tracking-wide text-quibble-text-m mt-2">STUN Server</label>
+            <select id="settingsStunPreset" class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none">
+              <option value="google">Google (stun.l.google.com)</option>
+              <option value="metered">Metered (stun.relay.metered.ca)</option>
+              <option value="twilio">Twilio (global.stun.twilio.com)</option>
+              <option value="cloudflare">Cloudflare (stun.cloudflare.com)</option>
+              <option value="mozilla">Mozilla (stun.services.mozilla.com)</option>
+              <option value="custom">Custom…</option>
+            </select>
+            <div id="settingsCustomStunWrap" class="hidden">
+              <input id="settingsCustomStunUrl" type="text" placeholder="stun:your.server.com:3478"
+                class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none mt-1" />
+              <p class="text-[11px] text-quibble-text-m mt-1">Enter a full STUN URI (e.g. stun:host:port)</p>
+            </div>
           </div>
         </div>
 

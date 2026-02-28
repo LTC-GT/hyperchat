@@ -73,7 +73,9 @@ const state = {
     recordSelfInCall: true,
     callBitrateMode: 'auto',
     notificationTone: 'chime',
-    ringtone: 'ring-bell'
+    ringtone: 'ring-bell',
+    stunPreset: 'google',
+    customStunUrl: ''
   },
   p2pNetworkTest: {
     status: 'idle',
@@ -307,7 +309,10 @@ const dom = {
   btnCallTheater: $('#btnCallTheater'),
   btnCallFullscreen: $('#btnCallFullscreen'),
   localVideo: $('#localVideo'),
-  remoteVideos: $('#remoteVideos')
+  remoteVideos: $('#remoteVideos'),
+  settingsStunPreset: $('#settingsStunPreset'),
+  settingsCustomStunUrl: $('#settingsCustomStunUrl'),
+  settingsCustomStunWrap: $('#settingsCustomStunWrap')
 }
 
 const appDialogQueue = []
@@ -510,7 +515,9 @@ function loadClientSettings () {
         ? String(parsed.callBitrateMode || 'auto').toLowerCase()
         : 'auto',
       notificationTone: String(parsed.notificationTone || 'chime'),
-      ringtone: String(parsed.ringtone || 'ring-bell')
+      ringtone: String(parsed.ringtone || 'ring-bell'),
+      stunPreset: String(parsed.stunPreset || 'google'),
+      customStunUrl: String(parsed.customStunUrl || '')
     }
   } catch {}
 }
@@ -528,7 +535,9 @@ function saveClientSettings () {
       recordSelfInCall: state.settings.recordSelfInCall !== false,
       callBitrateMode: String(state.settings.callBitrateMode || 'auto'),
       notificationTone: state.settings.notificationTone,
-      ringtone: state.settings.ringtone
+      ringtone: state.settings.ringtone,
+      stunPreset: state.settings.stunPreset || 'google',
+      customStunUrl: state.settings.customStunUrl || ''
     }))
   } catch {}
 }
