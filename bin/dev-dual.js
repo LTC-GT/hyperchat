@@ -3,13 +3,9 @@ import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
-import { PeerServer } from 'peer'
 
 const root = process.cwd()
 const baseDir = join(root, '.quibble-dev')
-
-// Shared PeerServer port — both Quibble instances point here.
-const SHARED_PEER_PORT = 3007
 
 // HTTP ports for the two Quibble instances.
 const instances = [
@@ -48,31 +44,13 @@ function shutdown (signal = 'SIGTERM') {
   setTimeout(() => process.exit(0), 120)
 }
 
-// ─── Start shared PeerServer ───
-const peerServer = PeerServer({
-  port: SHARED_PEER_PORT,
-  path: '/peerjs',
-  allow_discovery: false,
-  proxied: false,
-  alive_timeout: 60000,
-  key: 'quibble'
-})
-peerServer.on('connection', (client) => {
-  process.stdout.write(`[peerserver] client connected: ${client.getId()}\n`)
-})
-peerServer.on('disconnect', (client) => {
-  process.stdout.write(`[peerserver] client disconnected: ${client.getId()}\n`)
-})
-
 for (const instance of instances) {
   const env = {
     ...process.env,
     PORT: instance.port,
     HOST: '127.0.0.1',
     QUIBBLE_IDENTITY_DIR: instance.identityDir,
-    QUIBBLE_UI_STORAGE: instance.storageDir,
-    QUIBBLE_PEER_SERVER_PORT: String(SHARED_PEER_PORT),
-    QUIBBLE_PEER_SERVER_HOST: '127.0.0.1'
+    QUIBBLE_UI_STORAGE: instance.storageDir
   }
 
   const child = spawn(process.execPath, ['ui/server.js'], {
@@ -102,9 +80,9 @@ for (const instance of instances) {
 }
 
 process.stdout.write('Dual Quibble dev instances are running:\n')
-process.stdout.write(`  - client-a: http://127.0.0.1:3003\n`)
-process.stdout.write(`  - client-b: http://127.0.0.1:3004\n`)
-process.stdout.write(`  - PeerServer (shared): http://127.0.0.1:${SHARED_PEER_PORT}/peerjs\n`)
+process.stdout.write('  - client-a: http://127.0.0.1:3003\n')
+process.stdout.write('  - client-b: http://127.0.0.1:3004\n')
+process.stdout.write('  WebRTC signaling flows through Autobase — no separate signaling server needed.\n')
 process.stdout.write('Use separate browser profiles/incognito windows to avoid shared browser session state.\n')
 
 process.on('SIGINT', () => shutdown('SIGINT'))

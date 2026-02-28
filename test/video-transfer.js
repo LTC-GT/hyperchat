@@ -1,9 +1,9 @@
 /**
- * PeerJS-based video/voice test.
+ * WebRTC video/voice test.
  *
  * Since actual WebRTC media requires browser APIs (getUserMedia, RTCPeerConnection),
  * this test validates the helper module exports and the Autobase call signaling flow
- * through Hyperswarm rather than testing browser-side PeerJS calls directly.
+ * through Hyperswarm rather than testing browser-side WebRTC calls directly.
  *
  * The real P2P media tests should be run in-browser.
  */
@@ -15,8 +15,8 @@ import os from 'node:os'
 import path from 'node:path'
 import b4a from 'b4a'
 
-import { derivePeerJsId, buildIceServers, VIDEO_PROTOCOL } from '../lib/video.js'
-import { derivePeerJsId as derivePeerJsIdVoice, VOICE_PROTOCOL } from '../lib/voice.js'
+import { buildIceServers, VIDEO_PROTOCOL } from '../lib/video.js'
+import { VOICE_PROTOCOL } from '../lib/voice.js'
 import { Quibble } from '../lib/quibble.js'
 import { systemMsg } from '../lib/messages.js'
 
@@ -37,27 +37,28 @@ function waitFor (factory, timeoutMs = 15000) {
   })
 }
 
+/** Derive a peerId (hex of public key) — mirrors what the server does */
+function peerId (publicKey) {
+  return Buffer.isBuffer(publicKey) ? b4a.toString(publicKey, 'hex') : String(publicKey)
+}
+
 let testnet = null
 let alice = null
 let bob = null
 let tmpDir = null
 
 try {
-  // ── Test 1: derivePeerJsId produces consistent IDs from public keys ──
+  // ── Test 1: peerId produces consistent IDs from public keys ──
   const key1 = b4a.alloc(32, 11)
-  const id1 = derivePeerJsId(key1)
-  assert.ok(id1.startsWith('qb-'), 'PeerJS ID starts with qb- prefix')
-  assert.ok(id1.length > 10, 'PeerJS ID has reasonable length')
-  assert.equal(id1, derivePeerJsId(key1), 'Same key always produces same PeerJS ID')
+  const id1 = peerId(key1)
+  assert.ok(id1.length === 64, 'Peer ID is 64-char hex')
+  assert.equal(id1, peerId(key1), 'Same key always produces same peer ID')
 
   const key2 = b4a.alloc(32, 22)
-  const id2 = derivePeerJsId(key2)
-  assert.notEqual(id1, id2, 'Different keys produce different PeerJS IDs')
+  const id2 = peerId(key2)
+  assert.notEqual(id1, id2, 'Different keys produce different peer IDs')
 
-  // Voice module exports same function
-  assert.equal(typeof derivePeerJsIdVoice, 'function', 'Voice module exports derivePeerJsId')
-
-  console.log('✓ derivePeerJsId produces consistent, unique IDs from Hypercore keys')
+  console.log('✓ peerId produces consistent, unique IDs from Hypercore keys')
 
   // ── Test 2: buildIceServers defaults and custom ──
   const defaults = buildIceServers(null)
@@ -76,8 +77,8 @@ try {
   console.log('✓ buildIceServers returns correct defaults and respects custom config')
 
   // ── Test 3: Protocol constants ──
-  assert.equal(VIDEO_PROTOCOL, 'quibble-video-peerjs', 'Video protocol name is correct')
-  assert.equal(VOICE_PROTOCOL, 'quibble-voice-peerjs', 'Voice protocol name is correct')
+  assert.equal(VIDEO_PROTOCOL, 'quibble-video-webrtc', 'Video protocol name is correct')
+  assert.equal(VOICE_PROTOCOL, 'quibble-voice-webrtc', 'Voice protocol name is correct')
 
   console.log('✓ Protocol constants exported correctly')
 
@@ -85,7 +86,7 @@ try {
   testnet = await createTestnet(3)
   const bootstrap = testnet.bootstrap
 
-  tmpDir = path.join(os.tmpdir(), `quibble-peerjs-test-${Date.now()}`)
+  tmpDir = path.join(os.tmpdir(), `quibble-webrtc-test-${Date.now()}`)
   fs.mkdirSync(tmpDir, { recursive: true })
 
   const aliceKey = b4a.alloc(32, 11)
@@ -126,7 +127,7 @@ try {
     mode: 'video',
     scope: 'text',
     channelId: 'general',
-    peerJsId: derivePeerJsId(aliceKey)
+    peerId: peerId(aliceKey)
   }, aliceIdentity)
 
   await room.append(callStartMsg)
@@ -135,12 +136,12 @@ try {
   const page = await room.historyPage({ limit: 50 })
   const found = page.messages.find((m) => m?.action === 'call-start' && m?.data?.callId === 'test-call-123')
   assert.ok(found, 'call-start message is found in room history')
-  assert.equal(found.data.peerJsId, derivePeerJsId(aliceKey), 'PeerJS ID is included in call-start message')
+  assert.equal(found.data.peerId, peerId(aliceKey), 'Peer ID is included in call-start message')
   assert.equal(found.data.mode, 'video', 'Call mode is preserved')
 
   console.log('✓ Call signaling messages propagate through Autobase correctly')
   console.log('')
-  console.log('All PeerJS integration tests passed.')
+  console.log('All WebRTC integration tests passed.')
 } finally {
   try { await alice?.destroy() } catch {}
   try { await bob?.destroy() } catch {}

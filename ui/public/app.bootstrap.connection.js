@@ -179,11 +179,6 @@ function handleServerMessage (msg) {
   switch (msg.type) {
     case 'rtc-config':
       state.rtcIceServers = normalizeRtcIceServers(msg.iceServers)
-      state.peerServerHost = msg.peerServerHost || null
-      state.peerServerPort = msg.peerServerPort || null
-      state.peerServerPath = msg.peerServerPath || '/peerjs'
-      state.peerServerKey = msg.peerServerKey || 'quibble'
-      // PeerJS eager init happens after identity is received (see below)
       break
 
     case 'identity':
@@ -192,10 +187,6 @@ function handleServerMessage (msg) {
       state.boot.loadedRoomHistory.clear()
       startRoomDiscoveryWindow()
       state.identity = { publicKey: msg.publicKey }
-      // Eagerly connect to PeerServer now that identity + rtc-config are both available
-      if (typeof ensurePeerInstance === 'function') {
-        try { ensurePeerInstance() } catch (e) { console.warn('[PeerJS] eager init failed:', e) }
-      }
       state.profile = {
         fullName: msg.fullName || msg.name || '',
         username: msg.username || msg.name || '',

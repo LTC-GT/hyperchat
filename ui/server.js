@@ -159,19 +159,7 @@ const httpServer = createServer((req, res) => {
     return
   }
 
-  // Serve PeerJS browser bundle from node_modules
-  if (req.url === '/vendor/peerjs.min.js') {
-    try {
-      const peerjsPath = join(__dirname, '..', 'node_modules', 'peerjs', 'dist', 'peerjs.min.js')
-      const data = readFileSync(peerjsPath)
-      res.writeHead(200, { 'Content-Type': 'application/javascript' })
-      res.end(data)
-    } catch {
-      res.writeHead(404)
-      res.end('peerjs not found')
-    }
-    return
-  }
+
 
   let filePath = join(PUBLIC, req.url === '/' ? 'index.html' : req.url)
 
@@ -388,11 +376,7 @@ wss.on('connection', (ws) => {
 
   ws.send(JSON.stringify({
     type: 'rtc-config',
-    iceServers: rtcIceServers,
-    peerServerHost: process.env.QUIBBLE_PEER_SERVER_HOST || null,
-    peerServerPort: peerServerPort,
-    peerServerPath: '/peerjs',
-    peerServerKey: 'quibble'
+    iceServers: rtcIceServers
   }))
 
   // Send identity + profile on connect
@@ -1150,7 +1134,7 @@ wss.on('connection', (ws) => {
             channelId,
             dmKey,
             dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null,
-            peerJsId: msg.peerJsId || null
+            peerId: msg.peerId || null
           }, identity)
           await room.append(startMsg)
           setActiveCall(msg.roomKey, scope, channelId, dmKey, {
@@ -1189,7 +1173,7 @@ wss.on('connection', (ws) => {
             channelId,
             dmKey,
             dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null,
-            peerJsId: msg.peerJsId || null
+            peerId: msg.peerId || null
           }, identity)
           await room.append(joinMsg)
           break
@@ -1232,7 +1216,7 @@ wss.on('connection', (ws) => {
         case 'join-video':
         case 'video-frame':
         case 'end-video':
-          // Legacy Protomux voice/video – now handled entirely by PeerJS in the browser.
+          // Legacy Protomux voice/video – now handled entirely by WebRTC in the browser.
           break
         case 'get-history': {
           const room = quibble.rooms.get(msg.roomKey)
@@ -1467,57 +1451,15 @@ async function getLatestUserReactionState (room, { messageId, emoji, senderKey }
   }
 }
 
-// ─── PeerServer for WebRTC signaling ───
-// PeerJS clients connect here instead of the cloud PeerServer.
-// No media flows through this server — only signaling metadata.
-import { PeerServer } from 'peer'
-
-let peerServerInstance = null
-
 // ─── Start ───
 const listenPort = await findOpenPort(DEFAULT_PORT)
 if (listenPort !== DEFAULT_PORT) {
   console.warn(`⚠️  Port ${DEFAULT_PORT} is in use, using ${listenPort} instead.`)
 }
 
-// Start embedded PeerServer for WebRTC signaling (port + 1)
-// If QUIBBLE_PEER_SERVER_PORT is set, assume an external/shared PeerServer and skip startup.
-const externalPeerServer = Boolean(process.env.QUIBBLE_PEER_SERVER_PORT)
-const peerServerPort = externalPeerServer
-  ? Number(process.env.QUIBBLE_PEER_SERVER_PORT)
-  : listenPort + 1
-
-if (!externalPeerServer) {
-  try {
-    peerServerInstance = PeerServer({
-      host: LISTEN_HOST,
-      port: peerServerPort,
-      path: '/peerjs',
-      allow_discovery: false,
-      proxied: false,
-      alive_timeout: 60000,
-      key: 'quibble',
-      generateClientId: () => 'qb-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
-    })
-    peerServerInstance.on('connection', (client) => {
-      console.log(`  [PeerServer] client connected: ${client.getId()}`)
-    })
-    peerServerInstance.on('disconnect', (client) => {
-      console.log(`  [PeerServer] client disconnected: ${client.getId()}`)
-    })
-  } catch (err) {
-    console.error('⚠️  Failed to start PeerServer:', err.message)
-  }
-}
-
 httpServer.listen(listenPort, LISTEN_HOST, () => {
   console.log(`\n  🚀 Quibble Web UI running at http://localhost:${listenPort}`)
-  if (peerServerInstance) {
-    console.log(`  📞 PeerServer (WebRTC signaling) at http://localhost:${peerServerPort}/peerjs`)
-  } else if (externalPeerServer) {
-    const psHost = process.env.QUIBBLE_PEER_SERVER_HOST || 'localhost'
-    console.log(`  📞 Using external PeerServer at http://${psHost}:${peerServerPort}/peerjs`)
-  }
+  console.log(`  📞 WebRTC signaling via Autobase (no separate signaling server needed)`)
   const lanUrls = getLanUrls(listenPort)
   for (const url of lanUrls) {
     console.log(`  📱 LAN: ${url}`)
