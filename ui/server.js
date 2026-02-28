@@ -390,7 +390,7 @@ wss.on('connection', (ws) => {
     type: 'rtc-config',
     iceServers: rtcIceServers,
     peerServerHost: process.env.QUIBBLE_PEER_SERVER_HOST || null,
-    peerServerPort: Number(process.env.QUIBBLE_PEER_SERVER_PORT || (Number(process.env.PORT || DEFAULT_PORT) + 1)),
+    peerServerPort: peerServerPort,
     peerServerPath: '/peerjs',
     peerServerKey: 'quibble'
   }))
@@ -1495,7 +1495,7 @@ if (!externalPeerServer) {
       path: '/peerjs',
       allow_discovery: false,
       proxied: false,
-      alive_timeout: 6000,
+      alive_timeout: 60000,
       key: 'quibble',
       generateClientId: () => 'qb-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
     })

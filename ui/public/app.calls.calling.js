@@ -73,7 +73,14 @@ function getPeerJsIceConfig () {
  * Modelled on the videochat-peerjs-example: create once, register the
  * `peer.on('call')` handler immediately so incoming calls are never missed.
  */
-function ensurePeerInstance () {
+function ensurePeerInstance (forceRecreate) {
+  // Force-recreate: tear down existing and create fresh (ensures clean PeerServer registration)
+  if (forceRecreate && peerInstance) {
+    console.log('[PeerJS] Force-recreating peer instance for fresh PeerServer registration')
+    try { peerInstance.destroy() } catch {}
+    peerInstance = null
+  }
+
   // Healthy — reuse
   if (peerInstance && !peerInstance.destroyed && !peerInstance.disconnected) {
     return peerInstance
@@ -176,6 +183,29 @@ async function waitForPeerOpen () {
   if (_peerOpenPromise) await _peerOpenPromise
 }
 
+/**
+ * Ensure the peer is created AND truly open on PeerServer.
+ * Handles edge-cases where the open promise resolved from an error handler
+ * (e.g. unavailable-id triggered destroy + async retry) leaving peerInstance
+ * in a broken state.  Retries up to 3 times with 2 s gaps.
+ */
+async function ensurePeerReady () {
+  ensurePeerInstance()
+  await waitForPeerOpen()
+
+  for (let i = 0; i < 3; i++) {
+    if (peerInstance && !peerInstance.destroyed && !peerInstance.disconnected) return
+    console.warn(`[PeerJS] Peer not ready — retry ${i + 1}/3 in 2 s`)
+    await delay(2000)
+    ensurePeerInstance()
+    await waitForPeerOpen()
+  }
+
+  if (!peerInstance || peerInstance.destroyed || peerInstance.disconnected) {
+    console.error('[PeerJS] Could not establish PeerServer connection')
+  }
+}
+
 /* ─── Wire a MediaConnection ───────────────────────────────────────── */
 
 function wireMediaConnection (mc) {
@@ -215,9 +245,8 @@ async function callPeer (remotePeerId, localStream) {
   if (!localStream) { console.error('[PeerJS] callPeer: no local stream'); return }
   if (activeMediaConnections.has(remotePeerId)) return   // already connected
 
-  const peer = ensurePeerInstance()
-  if (!peer) { console.error('[PeerJS] callPeer: no peer instance'); return }
-  await waitForPeerOpen()
+  await ensurePeerReady()
+  if (!peerInstance) { console.error('[PeerJS] callPeer: no peer instance'); return }
 
   // Retry loop — the remote peer may not have registered on PeerServer
   // yet (Autobase message arrives before PeerServer registration).
@@ -257,6 +286,15 @@ async function callPeer (remotePeerId, localStream) {
     renderRemoteVideos()
 
     if (attempt < MAX_ATTEMPTS) {
+      // After 3 failed attempts, tear down and rebuild the PeerJS
+      // instance with a delay so PeerServer has time to clean up the
+      // old session before we re-register with the same ID.
+      if (attempt === 3) {
+        console.log('[PeerJS] Refreshing PeerServer connection after 3 failures')
+        if (peerInstance) { try { peerInstance.destroy() } catch {}; peerInstance = null }
+        await delay(1000)
+        await ensurePeerReady()
+      }
       console.log(`[PeerJS] Attempt ${attempt} → ${result}. Retrying in ${RETRY_DELAY} ms…`)
       await delay(RETRY_DELAY)
     }
@@ -460,9 +498,11 @@ async function startCall (mode, options = {}) {
   const stream = await requestCallMedia(mode)
   if (!stream) return
 
-  // Connect to PeerServer eagerly and wait for open
-  ensurePeerInstance()
-  await waitForPeerOpen()
+  // Reuse existing PeerServer connection (created eagerly on boot).
+  // Do NOT force-recreate — destroying + immediately recreating the same
+  // peer ID can trigger unavailable-id on PeerServer if the old session
+  // hasn't been cleaned up yet, leaving us with a null peer.
+  await ensurePeerReady()
 
   state.activeCall = { id: callId, mode, roomKey: scope.roomKey, channelId: scope.channelId, dmKey: scope.dmKey, scope: scope.scope }
   state.localCallStream = stream
@@ -500,9 +540,8 @@ async function joinCall (callId, mode, channelId, options = {}) {
   const stream = await requestCallMedia(mode)
   if (!stream || !state.activeRoom) return
 
-  // Connect to PeerServer eagerly and wait for open
-  ensurePeerInstance()
-  await waitForPeerOpen()
+  // Reuse existing PeerServer connection — see startCall comment.
+  await ensurePeerReady()
 
   const scope = {
     scope: options.scope || (options.dmKey ? 'dm' : (options.inlineChannelUi ? 'voice' : 'text')),
@@ -542,6 +581,23 @@ async function joinCall (callId, mode, channelId, options = {}) {
     mode,
     peerJsId: getPeerJsId()
   })
+
+  // ── Bidirectional calling ──
+  // Also call back the starter (and any known existing participants)
+  // so the connection works even if PeerServer pruned our registration
+  // or the starter's call to us fails.  The peer.on('call') handler on
+  // the starter will answer and wire the MediaConnection automatically.
+  // callPeer() is a no-op if we already have an active connection.
+  if (options.peerJsId && options.peerJsId !== getPeerJsId()) {
+    // Small delay to let our join-call message propagate first so the
+    // starter knows we exist (and sets up state.activeCall + stream).
+    setTimeout(() => {
+      if (state.activeCall && state.localCallStream) {
+        console.log('[PeerJS] Joiner calling back starter:', options.peerJsId)
+        callPeer(options.peerJsId, state.localCallStream)
+      }
+    }, 500)
+  }
 }
 
 /* ─── Incoming Autobase messages ───────────────────────────────────── */

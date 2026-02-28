@@ -54,7 +54,7 @@ const peerServer = PeerServer({
   path: '/peerjs',
   allow_discovery: false,
   proxied: false,
-  alive_timeout: 6000,
+  alive_timeout: 60000,
   key: 'quibble'
 })
 peerServer.on('connection', (client) => {
