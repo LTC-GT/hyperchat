@@ -1,5 +1,4 @@
-// @ts-nocheck
-function rebuildPinnedMap (roomKey) {
+function rebuildPinnedMap (roomKey: string) {
   const msgs = state.messagesByRoom.get(roomKey) || []
   const map = new Map()
 
@@ -25,7 +24,7 @@ function renderPinnedBar () {
     .filter((key) => key.startsWith(`${channelId}:`))
     .map((key) => pins.get(key))
     .map((id) => roomMsgs.find((m) => m.id === id))
-    .filter(Boolean)
+    .filter((msg): msg is ClientMessage => Boolean(msg))
     .slice(-3)
 
   if (pinnedMsgs.length === 0) {
@@ -51,7 +50,7 @@ dom.btnClearPinView?.addEventListener('click', () => {
   dom.pinnedBar?.classList.add('hidden')
 })
 
-function openThreadPanel (rootId) {
+function openThreadPanel (rootId: string) {
   state.activeThreadRootId = rootId
   renderThreadPanel()
 }
@@ -107,7 +106,7 @@ dom.btnSendThread?.addEventListener('click', () => {
   dom.threadInput.value = ''
 })
 
-function addCallEventCard (msg, opts = {}) {
+function addCallEventCard (msg: ClientMessage, opts: { persist?: boolean } = {}) {
   if (!state.activeRoom || !msg?.data) return
   if (!callMatchesCurrentView(msg.data, state.activeRoom)) return
   if (!dom.callEventFeed) return
@@ -127,12 +126,13 @@ function addCallEventCard (msg, opts = {}) {
     state.sessionCallEventsByRoom.set(roomKey, next)
   }
 
-  const dismissCard = (card) => {
+  const dismissCard = (card: HTMLElement | null) => {
     if (!card) return
     const timerId = card.dataset.timerId
-    if (timerId && state._callEventTimers.has(timerId)) {
-      clearTimeout(state._callEventTimers.get(timerId))
-      state._callEventTimers.delete(timerId)
+    const timers = state._callEventTimers
+    if (timerId && timers?.has(timerId)) {
+      clearTimeout(timers.get(timerId))
+      timers.delete(timerId)
     }
 
     const dismissedEventId = card.dataset.eventId
@@ -145,7 +145,7 @@ function addCallEventCard (msg, opts = {}) {
   }
 
   if (dom.callEventFeed.children.length >= 3) {
-    const topCard = dom.callEventFeed.firstElementChild
+    const topCard = dom.callEventFeed.firstElementChild as HTMLElement | null
     dismissCard(topCard)
   }
 
@@ -189,7 +189,7 @@ function renderCallEventFeed () {
   }
 }
 
-function rebuildFriends (roomKey) {
+function rebuildFriends (roomKey: string) {
   const msgs = state.messagesByRoom.get(roomKey) || []
   for (const msg of msgs) {
     if (msg?.type !== 'system') continue
@@ -202,18 +202,20 @@ function rebuildFriends (roomKey) {
       const from = msg.data?.fromKey
       const target = msg.data?.targetKey
       if (from === state.identity?.publicKey && target) {
-        state.friends.set(target, { name: msg.senderName || 'Friend' })
-        state.friendRequests.delete(target)
+        const targetKey = String(target)
+        state.friends.set(targetKey, { name: msg.senderName || 'Friend' })
+        state.friendRequests.delete(targetKey)
       }
       if (target === state.identity?.publicKey && from) {
-        state.friends.set(from, { name: msg.senderName || 'Friend' })
-        state.friendRequests.delete(from)
+        const fromKey = String(from)
+        state.friends.set(fromKey, { name: msg.senderName || 'Friend' })
+        state.friendRequests.delete(fromKey)
       }
     }
   }
 }
 
-function rebuildModerationState (roomKey) {
+function rebuildModerationState (roomKey: string) {
   const msgs = state.messagesByRoom.get(roomKey) || []
   const bans = new Map()
   const roomKicks = new Map()
@@ -250,24 +252,24 @@ function rebuildModerationState (roomKey) {
   state.channelKicksByRoom.set(roomKey, kicks)
 }
 
-function isCurrentUserBannedFromRoom (roomKey) {
+function isCurrentUserBannedFromRoom (roomKey: string) {
   const bans = state.roomBansByRoom.get(roomKey) || new Map()
   return bans.has(state.identity?.publicKey)
 }
 
-function isCurrentUserKickedFromChannel (roomKey, channelId) {
+function isCurrentUserKickedFromChannel (roomKey: string, channelId: string) {
   const roomKicks = state.channelKicksByRoom.get(`${roomKey}::room`) || new Map()
   if (roomKicks.has(state.identity?.publicKey)) return true
   const kicks = state.channelKicksByRoom.get(roomKey) || new Map()
   return kicks.get(channelId)?.has(state.identity?.publicKey) || false
 }
 
-function isCurrentUserKickedFromServer (roomKey) {
+function isCurrentUserKickedFromServer (roomKey: string) {
   const roomKicks = state.channelKicksByRoom.get(`${roomKey}::room`) || new Map()
   return roomKicks.has(state.identity?.publicKey)
 }
 
-function isSenderBlockedForChannel (roomKey, channelId, sender) {
+function isSenderBlockedForChannel (roomKey: string, channelId: string, sender: string) {
   const bans = state.roomBansByRoom.get(roomKey) || new Map()
   if (bans.has(sender)) return true
   const roomKicks = state.channelKicksByRoom.get(`${roomKey}::room`) || new Map()
@@ -327,7 +329,7 @@ function renderFriendsHome () {
   }
 }
 
-function openDmWithFriend (friendKey, friendName) {
+function openDmWithFriend (friendKey: string, friendName: string | undefined) {
   if (!state.activeRoom) return
   state.activeSearchChannelId = null
   state.activeDmKey = getDmKey(state.identity?.publicKey, friendKey)
@@ -341,7 +343,7 @@ function openDmWithFriend (friendKey, friendName) {
   updateHeaderActionVisibility?.()
 }
 
-function getDmKey (a, b) {
+function getDmKey (a: unknown, b: unknown) {
   return [String(a || ''), String(b || '')].sort().join(':')
 }
 
@@ -358,6 +360,16 @@ function updateSecurityStatus () {
   dom.securityPeers.textContent = String(state.peers.size)
   dom.securityEncrypt.textContent = 'Autobase + XSalsa20-Poly1305'
 
+  if (dom.securitySwarmConns) {
+    dom.securitySwarmConns.textContent = String(state.swarmConnections ?? 0)
+  }
+  if (dom.securityWriters && state.activeRoom) {
+    const writers = state.swarmWriters?.[state.activeRoom] ?? 0
+    dom.securityWriters.textContent = String(writers)
+  } else if (dom.securityWriters) {
+    dom.securityWriters.textContent = '–'
+  }
+
   const memberKeys = new Set()
   if (state.activeRoom) {
     const msgs = state.messagesByRoom.get(state.activeRoom) || []
@@ -368,7 +380,7 @@ function updateSecurityStatus () {
   dom.securityKnownMembers.textContent = String(memberKeys.size)
 }
 
-function renderUrlPreviews (msg) {
+function renderUrlPreviews (msg: ClientMessage) {
   if (!msg?.text) return ''
   const urls = [...msg.text.matchAll(/https?:\/\/[^\s]+/g)].map((m) => m[0]).slice(0, 2)
   if (urls.length === 0) return ''
@@ -412,13 +424,13 @@ function scrollToBottom () {
   })
 }
 
-function esc (str) {
+function esc (str: unknown) {
   const d = document.createElement('div')
-  d.textContent = str || ''
+  d.textContent = String(str || '')
   return d.innerHTML
 }
 
-function formatContent (text) {
+function formatContent (text: string) {
   let html = esc(text)
   html = html.replace(/```([\s\S]*?)```/g, '<pre class="bg-quibble-serverbar rounded px-3 py-2 my-1 text-sm font-mono whitespace-pre-wrap">$1</pre>')
   html = html.replace(/`([^`]+)`/g, '<code class="bg-quibble-serverbar rounded px-1 py-0.5 text-sm font-mono">$1</code>')
@@ -430,7 +442,7 @@ function formatContent (text) {
   return html
 }
 
-function applyCustomEmoji (html) {
+function applyCustomEmoji (html: string) {
   if (!state.activeRoom) return html
   const custom = state.roomEmojis.get(state.activeRoom) || new Map()
   for (const [name, src] of custom) {
@@ -440,7 +452,7 @@ function applyCustomEmoji (html) {
   return html
 }
 
-function formatDate (ts) {
+function formatDate (ts: number) {
   const d = new Date(ts)
   const now = new Date()
   const y = new Date(now)
@@ -451,15 +463,15 @@ function formatDate (ts) {
   return `${d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })} ${time}`
 }
 
-function formatTime (ts) {
+function formatTime (ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatTimeShort (ts) {
+function formatTimeShort (ts: number) {
   return formatTime(ts)
 }
 
-function formatBytes (size) {
+function formatBytes (size: number) {
   if (!size) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
   let i = 0
@@ -471,7 +483,7 @@ function formatBytes (size) {
   return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
-function getDefaultAvatar (name) {
+function getDefaultAvatar (name: string) {
   return `<span class="text-white">${(name || '?').charAt(0).toUpperCase()}</span>`
 }
 
@@ -485,7 +497,7 @@ function getNameColor (senderHex = '') {
   return NAME_COLORS[Math.abs(hash) % NAME_COLORS.length]
 }
 
-function insertAtCursor (el, text) {
+function insertAtCursor (el: HTMLTextAreaElement | DomRef, text: string) {
   const start = el.selectionStart
   const end = el.selectionEnd
   const before = el.value.slice(0, start)
@@ -497,7 +509,7 @@ function insertAtCursor (el, text) {
   el.dispatchEvent(new Event('input'))
 }
 
-function fileToBase64 (file) {
+function fileToBase64 (file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result).split(',')[1])
@@ -506,7 +518,7 @@ function fileToBase64 (file) {
   })
 }
 
-function fileToDataURL (file) {
+function fileToDataURL (file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
@@ -515,15 +527,15 @@ function fileToDataURL (file) {
   })
 }
 
-function base64ToBlob (base64, type) {
+function base64ToBlob (base64: string, type: string) {
   const bytes = atob(base64)
   const arr = new Uint8Array(bytes.length)
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
   return new Blob([arr], { type })
 }
 
-document.addEventListener('click', (e) => {
-  const target = e.target
+document.addEventListener('click', (e: MouseEvent) => {
+  const target = e.target as Node | null
   const clickedEmojiButton = Boolean(dom.btnEmoji && (target === dom.btnEmoji || dom.btnEmoji.contains(target)))
   if (dom.emojiPicker && !dom.emojiPicker.contains(target) && !clickedEmojiButton) {
     dom.emojiPicker.classList.add('hidden')
@@ -551,6 +563,81 @@ for (const modal of [dom.roomModal, dom.inviteModal]) {
     if (e.target === modal) modal.classList.add('hidden')
   })
 }
+
+// ─── Friend Link sharing ───
+const FRIEND_LINK_PREFIX = 'quibble://quibble/'
+
+function generateFriendLink () {
+  if (!state.identity?.publicKey) return null
+  return `${FRIEND_LINK_PREFIX}${state.identity.publicKey}`
+}
+
+function parseFriendLink (raw: string) {
+  const text = String(raw || '').trim()
+  if (text.startsWith(FRIEND_LINK_PREFIX)) {
+    const key = text.slice(FRIEND_LINK_PREFIX.length).trim().toLowerCase()
+    if (/^[a-f0-9]{64}$/.test(key)) return key
+  }
+  // Also accept bare hex key
+  const bare = text.toLowerCase()
+  if (/^[a-f0-9]{64}$/.test(bare)) return bare
+  return null
+}
+
+dom.btnCopyFriendLink?.addEventListener('click', async () => {
+  const link = generateFriendLink()
+  if (!link) {
+    appAlert('Identity not loaded yet.', { title: 'Error' })
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(link)
+    const btn = dom.btnCopyFriendLink
+    const orig = btn.textContent
+    btn.textContent = 'Copied!'
+    setTimeout(() => { btn.textContent = orig }, 1500)
+  } catch {
+    appAlert(link, { title: 'Your Friend Link' })
+  }
+})
+
+dom.btnPasteFriendLink?.addEventListener('click', async () => {
+  let text = ''
+  try {
+    text = await navigator.clipboard.readText()
+  } catch {
+    const manualInput = await appPrompt('Paste the friend link or public key:', {
+      title: 'Add Friend',
+      placeholder: 'quibble://quibble/<64-char hex> or 64-char hex key',
+      confirmText: 'Add Friend',
+      cancelText: 'Cancel'
+    })
+    if (manualInput == null) return
+    text = String(manualInput || '')
+  }
+  const friendKey = parseFriendLink(text)
+  if (!friendKey) {
+    appAlert('Invalid friend link. Expected quibble://quibble/<64-char hex> or a 64-character hex key.', { title: 'Invalid Link' })
+    return
+  }
+  if (friendKey === state.identity?.publicKey) {
+    appAlert("That's your own friend link!", { title: 'Oops' })
+    return
+  }
+  if (state.friends.has(friendKey)) {
+    appAlert('You are already friends with this user.', { title: 'Already Friends' })
+    openDmWithFriend(friendKey, state.friends.get(friendKey)?.name)
+    return
+  }
+  if (!state.activeRoom) {
+    appAlert('Join a room first so the friend request can be sent through it.', { title: 'No Active Room' })
+    return
+  }
+  send({ type: 'friend-request', roomKey: state.activeRoom, targetKey: friendKey, targetName: '' })
+  state.friendRequests.set(friendKey, { name: friendKey.slice(0, 8), roomKey: state.activeRoom, outgoing: true })
+  renderFriendsHome()
+  appAlert('Friend request sent! They will see it once they sync this room.', { title: 'Request Sent' })
+})
 
 dom.app.classList.remove('hidden')
 updateHeaderActionVisibility?.()

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// @ts-nocheck
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -29,10 +28,10 @@ for (const instance of instances) {
   mkdirSync(instance.storageDir, { recursive: true })
 }
 
-const children = []
+const children: ChildProcess[] = []
 let shuttingDown = false
 
-function shutdown (signal = 'SIGTERM') {
+function shutdown (signal: NodeJS.Signals = 'SIGTERM') {
   if (shuttingDown) return
   shuttingDown = true
 
@@ -54,17 +53,17 @@ for (const instance of instances) {
     QUIBBLE_UI_STORAGE: instance.storageDir
   }
 
-  const child = spawn(process.execPath, ['ui/server.js'], {
+  const child = spawn(process.execPath, ['dist/ui/server.js'], {
     cwd: root,
     env,
     stdio: ['ignore', 'pipe', 'pipe']
   })
 
-  child.stdout.on('data', (chunk) => {
+  child.stdout!.on('data', (chunk) => {
     process.stdout.write(`[${instance.name}] ${chunk}`)
   })
 
-  child.stderr.on('data', (chunk) => {
+  child.stderr!.on('data', (chunk) => {
     process.stderr.write(`[${instance.name}] ${chunk}`)
   })
 
@@ -73,7 +72,7 @@ for (const instance of instances) {
     process.stdout.write(`[${instance.name}] exited (${reason})\n`)
     if (!shuttingDown && code !== 0) {
       shutdown('SIGTERM')
-      process.exitCode = Number.isInteger(code) ? code : 1
+      process.exitCode = code ?? 1
     }
   })
 

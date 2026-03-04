@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Quibble – core P2P node.
  *
@@ -11,7 +10,6 @@
  * A single Quibble instance manages one identity and multiple rooms.
  */
 
-// @ts-nocheck
 import { createRequire } from 'node:module'
 import { EventEmitter } from 'node:events'
 import Corestore from 'corestore'
@@ -29,22 +27,25 @@ const ROOM_SYNC_ID = b4a.from('room-writer-sync-v1')
 const HEX_KEY_RE = /^[a-f0-9]{64}$/i
 
 export class Quibble extends EventEmitter {
-  /**
-   * @param {object} opts
-   * @param {string}  opts.storage   – path to Corestore storage directory
-   * @param {object}  opts.identity  – { publicKey, secretKey, name }
-   * @param {object}  [opts.swarmOpts] – extra Hyperswarm options (e.g. bootstrap)
-   */
-  constructor (opts) {
+  identity: Identity
+  store: InstanceType<typeof Corestore>
+  swarm: InstanceType<typeof Hyperswarm>
+  rooms: Map<string, Room>
+  _peersByKey: Map<string, Set<unknown>>
+  _sockets: Set<unknown>
+  _writerSyncBySocket: Map<unknown, { messages: { send(buf: Buffer): void }[]; open(): void; close(): void }>
+  _writerGrantCache: Map<string, Set<string>>
+
+  constructor (opts: QuibbleOpts) {
     super()
     this.identity = opts.identity
     this.store = new Corestore(opts.storage)
     this.swarm = new Hyperswarm(opts.swarmOpts)
-    this.rooms = new Map() // roomKeyHex -> Room
-    this._peersByKey = new Map() // remotePubKeyHex -> Set<socket>
+    this.rooms = new Map()
+    this._peersByKey = new Map()
     this._sockets = new Set()
-    this._writerSyncBySocket = new Map() // socket -> protomux channel
-    this._writerGrantCache = new Map() // roomKeyHex -> Set<writerKeyHex>
+    this._writerSyncBySocket = new Map()
+    this._writerGrantCache = new Map()
 
     // Replicate Corestore over every Hyperswarm connection
     this.swarm.on('connection', (socket, info) => {
@@ -52,7 +53,7 @@ export class Quibble extends EventEmitter {
       const pkHex = b4a.toString(info.publicKey, 'hex')
       this._sockets.add(socket)
       if (!this._peersByKey.has(pkHex)) this._peersByKey.set(pkHex, new Set())
-      this._peersByKey.get(pkHex).add(socket)
+      this._peersByKey.get(pkHex)!.add(socket)
       this._attachWriterSync(socket)
       this._announceAllRoomsToSocket(socket)
       socket.on('close', () => {
@@ -80,7 +81,7 @@ export class Quibble extends EventEmitter {
    * Create a brand-new room (we are the first member + indexer).
    * @returns {Promise<Room>}
    */
-  async createRoom (opts = {}) {
+  async createRoom (opts: { namespace?: string; encryptionKey?: Buffer | null } = {}) {
     const namespace = opts.namespace || `room-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const room = new Room(this.store, {
       key: null,
@@ -90,11 +91,11 @@ export class Quibble extends EventEmitter {
     })
     await room.ready()
 
-    const keyHex = b4a.toString(room.key, 'hex')
+    const keyHex = b4a.toString(room.key!, 'hex')
     this.rooms.set(keyHex, room)
 
     // Join Hyperswarm with the room's discovery key so peers can find us
-    this.swarm.join(room.discoveryKey, { server: true, client: true })
+    this.swarm.join(room.discoveryKey!, { server: true, client: true })
     this._announceRoomToPeers(room)
 
     this.emit('room', room)
@@ -106,7 +107,7 @@ export class Quibble extends EventEmitter {
    * @param {Buffer|string} keyOrLink
    * @returns {Promise<Room>}
    */
-  async joinRoom (keyOrLink, opts = {}) {
+  async joinRoom (keyOrLink: Buffer | string, opts: { namespace?: string; encryptionKey?: Buffer | null } = {}) {
     let key
     if (typeof keyOrLink === 'string' && keyOrLink.startsWith('pear://quibble/')) {
       key = parseLink(keyOrLink)
@@ -128,7 +129,7 @@ export class Quibble extends EventEmitter {
     await room.ready()
 
     this.rooms.set(keyHex, room)
-    this.swarm.join(room.discoveryKey, { server: true, client: true })
+    this.swarm.join(room.discoveryKey!, { server: true, client: true })
     this._announceRoomToPeers(room)
 
     this.emit('room', room)
@@ -138,7 +139,7 @@ export class Quibble extends EventEmitter {
   /**
    * Leave a room and stop replicating it.
    */
-  async leaveRoom (keyOrLink) {
+  async leaveRoom (keyOrLink: Buffer | string) {
     let keyHex
     if (typeof keyOrLink === 'string' && keyOrLink.startsWith('pear://quibble/')) {
       keyHex = b4a.toString(parseLink(keyOrLink), 'hex')
@@ -152,11 +153,11 @@ export class Quibble extends EventEmitter {
     if (!room) return
     this.rooms.delete(keyHex)
     this._writerGrantCache.delete(keyHex)
-    await this.swarm.leave(room.discoveryKey)
+    await this.swarm.leave(room.discoveryKey!)
     await room.close()
   }
 
-  _attachWriterSync (socket) {
+  _attachWriterSync (socket: unknown) {
     if (this._writerSyncBySocket.has(socket)) return
 
     const mux = Protomux.from(socket)
@@ -166,7 +167,7 @@ export class Quibble extends EventEmitter {
       messages: [
         {
           encoding: c.buffer,
-          onmessage: (buf) => {
+          onmessage: (buf: Buffer) => {
             this._onWriterSyncMessage(buf)
           }
         }
@@ -177,19 +178,19 @@ export class Quibble extends EventEmitter {
     this._writerSyncBySocket.set(socket, channel)
   }
 
-  _announceAllRoomsToSocket (socket) {
+  _announceAllRoomsToSocket (socket: unknown) {
     for (const room of this.rooms.values()) {
       this._announceRoomToSocket(room, socket)
     }
   }
 
-  _announceRoomToPeers (room) {
+  _announceRoomToPeers (room: Room) {
     for (const socket of this._sockets) {
       this._announceRoomToSocket(room, socket)
     }
   }
 
-  _announceRoomToSocket (room, socket) {
+  _announceRoomToSocket (room: Room, socket: unknown) {
     const channel = this._writerSyncBySocket.get(socket)
     if (!channel || !room?.key || !room?.base?.local?.key) return
 
@@ -204,7 +205,7 @@ export class Quibble extends EventEmitter {
     } catch {}
   }
 
-  _onWriterSyncMessage (buf) {
+  _onWriterSyncMessage (buf: Buffer) {
     let payload = null
     try {
       payload = JSON.parse(b4a.toString(buf))
@@ -225,13 +226,13 @@ export class Quibble extends EventEmitter {
     if (writerKey === localWriterKey) return
 
     if (!this._writerGrantCache.has(roomKey)) this._writerGrantCache.set(roomKey, new Set())
-    const granted = this._writerGrantCache.get(roomKey)
+    const granted = this._writerGrantCache.get(roomKey)!
     if (granted.has(writerKey)) return
 
     this._grantWriter(room, roomKey, writerKey, granted)
   }
 
-  async _grantWriter (room, roomKey, writerKey, granted) {
+  async _grantWriter (room: Room, roomKey: string, writerKey: string, granted: Set<string>) {
     try {
       await room.addWriter(b4a.from(writerKey, 'hex'))
       granted.add(writerKey)
@@ -247,8 +248,8 @@ export class Quibble extends EventEmitter {
   }
 
   /** Render a room key as a pear://quibble/... link */
-  link (room) {
-    return createLink(room.key)
+  link (room: Room) {
+    return createLink(room.key!)
   }
 
   // ─── Shutdown ───

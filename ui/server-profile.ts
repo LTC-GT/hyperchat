@@ -1,11 +1,10 @@
-// @ts-nocheck
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-export function createProfileStore (identity) {
-  const profilePath = join(identity.dir, 'profile.json')
+export function createProfileStore (identity: Identity) {
+  const profilePath = join(identity.dir!, 'profile.json')
 
-  function normalizePresenceStatus (value) {
+  function normalizePresenceStatus (value: unknown) {
     const status = String(value || 'active').toLowerCase()
     if (status === 'active' || status === 'away') return status
     if (status === 'online') return 'active'
@@ -40,7 +39,7 @@ export function createProfileStore (identity) {
     }
   }
 
-  function saveProfile (data) {
+  function saveProfile (data: Partial<{ fullName: string; username: string; avatar: string | null; presenceStatus: string; setupDone: boolean }> | null) {
     const existing = loadProfile()
     const merged = {
       ...existing,

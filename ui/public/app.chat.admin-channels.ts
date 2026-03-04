@@ -1,6 +1,5 @@
-// @ts-nocheck
-function rebuildRoomAdmins (roomKey) {
-  const admins = new Set()
+function rebuildRoomAdmins (roomKey: string) {
+  const admins = new Set<string>()
   const msgs = state.messagesByRoom.get(roomKey) || []
   let snapshot = false
 
@@ -22,7 +21,7 @@ function rebuildRoomAdmins (roomKey) {
   state.roomAdmins.set(roomKey, admins)
 }
 
-function rebuildRoomOwner (roomKey) {
+function rebuildRoomOwner (roomKey: string) {
   const msgs = state.messagesByRoom.get(roomKey) || []
   let owner = null
 
@@ -46,7 +45,7 @@ function rebuildRoomOwner (roomKey) {
   }
 }
 
-function rebuildRoomProfile (roomKey) {
+function rebuildRoomProfile (roomKey: string) {
   const msgs = state.messagesByRoom.get(roomKey) || []
   let latest = null
 
@@ -58,25 +57,31 @@ function rebuildRoomProfile (roomKey) {
   const room = state.rooms.get(roomKey)
   if (!room) return
 
+  // Use a deterministic fallback based on room key (not random)
+  const deterministicFallback = pickDefaultRoomEmoji(roomKey)
+
   if (!latest) {
-    room.iconEmoji = room.iconEmoji || pickDefaultRoomEmoji(roomKey)
-    room.iconImage = room.iconImage || null
+    // No profile-set message yet — use existing emoji if already assigned,
+    // otherwise fall back to deterministic hash of room key.
+    if (!room.iconEmoji) room.iconEmoji = deterministicFallback
+    // Don't overwrite iconImage if it was already set
     state.rooms.set(roomKey, room)
     renderServerList()
     return
   }
 
-  room.iconEmoji = String(latest.emoji || room.iconEmoji || pickDefaultRoomEmoji(roomKey)).trim()
+  // Apply the emoji from the latest room-profile-set message
+  const newEmoji = String(latest.emoji || '').trim()
+  room.iconEmoji = newEmoji || deterministicFallback
   room.iconImage = typeof latest.imageData === 'string' && latest.imageData.startsWith('data:image/')
     ? latest.imageData
     : null
 
-  if (!room.iconEmoji) room.iconEmoji = pickDefaultRoomEmoji(roomKey)
   state.rooms.set(roomKey, room)
   renderServerList()
 }
 
-function rebuildRoomName (roomKey) {
+function rebuildRoomName (roomKey: string) {
   const msgs = state.messagesByRoom.get(roomKey) || []
   let latestName = ''
 
@@ -127,7 +132,7 @@ function updateHeaderActionVisibility () {
   const inDm = Boolean(state.activeRoom && state.activeDmKey)
   const inTextChannel = Boolean(inRoom && !inDm)
   const activeTextChannelId = inRoom
-    ? (state.activeTextChannelByRoom.get(state.activeRoom) || 'general')
+    ? (state.activeTextChannelByRoom.get(state.activeRoom!) || 'general')
     : 'general'
   const canCallFromHeader = inDm || inTextChannel
   const hasLiveCall = Boolean(state.activeCall && state.activeCall.roomKey === state.activeRoom)
@@ -192,7 +197,7 @@ function clearSearchResultsView ({ clearInput = false } = {}) {
   dom.messageComposer?.classList.remove('hidden')
 }
 
-function showSearchResultsView ({ title, subtitle, rows }) {
+function showSearchResultsView ({ title, subtitle, rows }: { title: string; subtitle: string; rows: { meta: string; text: string }[] }) {
   if (!dom.searchResultsView || !dom.messagesScroll) return
   state.searchResultsActive = true
   dom.messagesScroll.classList.add('hidden')
@@ -200,7 +205,7 @@ function showSearchResultsView ({ title, subtitle, rows }) {
   dom.searchResultsView.classList.remove('hidden')
 
   const body = rows.length
-    ? rows.map((row) => `
+    ? rows.map((row: { meta: string; text: string }) => `
       <div class="bg-quibble-serverbar rounded px-3 py-2 mb-2">
         <div class="text-xs text-quibble-text-m mb-1">${esc(row.meta)}</div>
         <div class="text-sm text-quibble-text">${formatContent(row.text || '')}</div>
@@ -217,7 +222,7 @@ function showSearchResultsView ({ title, subtitle, rows }) {
   `
 }
 
-function getActiveDmSearchMatches (query) {
+function getActiveDmSearchMatches (query: string) {
   if (!state.activeRoom || !state.activeDmKey) return []
   const roomMsgs = state.messagesByRoom.get(state.activeRoom) || []
   const q = query.toLowerCase()
@@ -230,8 +235,9 @@ function getActiveDmSearchMatches (query) {
     }))
 }
 
-function getActiveServerSearchMatches (query) {
+function getActiveServerSearchMatches (query: string) {
   if (!state.activeRoom) return []
+  const activeRoom = state.activeRoom
   const roomMsgs = state.messagesByRoom.get(state.activeRoom) || []
   const q = query.toLowerCase()
   const selectedChannel = state.activeSearchChannelId
@@ -242,7 +248,7 @@ function getActiveServerSearchMatches (query) {
     .filter((msg) => String(msg.text || '').toLowerCase().includes(q))
     .map((msg) => {
       const channelId = msg.channelId || 'general'
-      const channelName = getChannelById(state.activeRoom, 'text', channelId)?.name || channelId
+      const channelName = getChannelById(activeRoom, 'text', channelId)?.name || channelId
       return {
         text: msg.text || '',
         meta: `#${channelName} • ${msg.senderName || 'Unknown'} • ${formatDate(msg.timestamp)}`
@@ -250,7 +256,7 @@ function getActiveServerSearchMatches (query) {
     })
 }
 
-function renderServerSearchDropdown (query) {
+function renderServerSearchDropdown (query: string) {
   if (!dom.channelSearchDropdown || !state.activeRoom || !query) {
     hideSearchDropdown()
     return
@@ -343,7 +349,7 @@ function handleHeaderSearchInput () {
   renderServerSearchDropdown(query)
 }
 
-function resolveMemberNameByKey (roomKey, publicKey) {
+function resolveMemberNameByKey (roomKey: string, publicKey: string) {
   if (!publicKey) return 'Unknown'
   if (publicKey === state.identity?.publicKey) {
     return state.profile.fullName || state.profile.username || 'You'
@@ -406,7 +412,7 @@ function renderAdminPanel () {
     `
 
     row.querySelector('.remove-emoji')?.addEventListener('click', (ev) => {
-      const emojiName = ev.currentTarget.dataset.name
+      const emojiName = (ev.currentTarget as HTMLElement).dataset.name
       send({ type: 'remove-custom-emoji', roomKey: state.activeRoom, name: emojiName })
     })
 
@@ -420,7 +426,7 @@ function renderAdminPanel () {
     const row = document.createElement('div')
     row.className = 'bg-quibble-serverbar rounded px-2 py-2 text-xs break-all'
     const isOwnerAdmin = admin === ownerKey
-    row.innerHTML = `${isOwnerAdmin ? '👑 ' : ''}${esc(resolveMemberNameByKey(state.activeRoom, admin))} <span class="text-quibble-text-m">(${esc(admin.slice(0, 10))}…)</span>`
+    row.innerHTML = `${isOwnerAdmin ? '👑 ' : ''}${esc(resolveMemberNameByKey(state.activeRoom, admin))} <span class="text-quibble-text-m">(${esc((admin as string).slice(0, 10))}…)</span>`
     dom.adminList.appendChild(row)
   }
 
@@ -452,7 +458,7 @@ function renderModerationPanel () {
   for (const [key, data] of combined) {
     const row = document.createElement('div')
     row.className = 'bg-quibble-serverbar rounded px-2 py-2 flex items-center gap-2'
-    row.innerHTML = `<span class="flex-1 truncate">${esc(data.name || key.slice(0, 12))}</span><span class="text-quibble-text-m">${esc(key.slice(0, 8))}…</span>`
+    row.innerHTML = `<span class="flex-1 truncate">${esc((data as any).name || (key as string).slice(0, 12))}</span><span class="text-quibble-text-m">${esc((key as string).slice(0, 8))}…</span>`
     dom.adminBanList.appendChild(row)
   }
 
@@ -476,14 +482,15 @@ dom.btnAdminAddEmoji?.addEventListener('click', () => {
   dom.customEmojiInput.click()
 })
 
-dom.customEmojiInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0]
+dom.customEmojiInput.addEventListener('change', async (e: Event) => {
+  const target = e.target as HTMLInputElement | null
+  const file = target?.files?.[0]
   if (!file || !state.activeRoom || !isCurrentUserAdmin()) return
 
   const name = (await appPrompt('Custom emoji name (letters, numbers, _):', {
     title: 'Add custom emoji',
     placeholder: 'emoji_name'
-  }))?.trim().toLowerCase()
+  }) as string)?.trim().toLowerCase()
   const cleanName = (name || '').replace(/[^a-z0-9_]/g, '')
   if (!cleanName) return
 
@@ -504,8 +511,9 @@ dom.btnAdminSetServerAvatar?.addEventListener('click', () => {
   dom.serverAvatarInput?.click()
 })
 
-dom.serverAvatarInput?.addEventListener('change', async (event) => {
-  const file = event.target.files?.[0]
+dom.serverAvatarInput?.addEventListener('change', async (event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  const file = target?.files?.[0]
   if (!file || !state.activeRoom || !isCurrentUserAdmin()) return
 
   const room = state.rooms.get(state.activeRoom)
@@ -625,7 +633,7 @@ dom.btnAddTextChannel?.addEventListener('click', async () => {
   const name = (await appPrompt('Text channel name? (e.g. memes)', {
     title: 'Create text channel',
     placeholder: 'memes'
-  }))?.trim()
+  }) as string)?.trim()
   if (!name) return
   const modOnly = !(await appConfirm('Make this channel moderator/admin only?', {
     title: 'Channel visibility',
@@ -640,7 +648,7 @@ dom.btnAddVoiceChannel?.addEventListener('click', async () => {
   const name = (await appPrompt('Voice channel name? (e.g. hangout)', {
     title: 'Create voice channel',
     placeholder: 'hangout'
-  }))?.trim()
+  }) as string)?.trim()
   if (!name) return
   const modOnly = !(await appConfirm('Make this voice channel moderator/admin only?', {
     title: 'Channel visibility',
@@ -658,7 +666,7 @@ dom.channelSearch?.addEventListener('keydown', (e) => {
 })
 dom.btnChannelSearchSubmit?.addEventListener('click', runHeaderSearch)
 
-function rebuildChannels (roomKey) {
+function rebuildChannels (roomKey: string) {
   const channels = {
     text: [{ id: 'general', name: 'general', modOnly: false }],
     voice: [{ id: 'voice-general', name: 'General', modOnly: false }]
@@ -696,10 +704,10 @@ function rebuildChannels (roomKey) {
   }
 }
 
-function getChannelById (roomKey, kind, id) {
+function getChannelById (roomKey: string, kind: 'text' | 'voice', id: string) {
   const channels = state.channelsByRoom.get(roomKey)
   if (!channels) return null
-  return (channels[kind] || []).find((c) => c.id === id) || null
+  return (channels[kind] || []).find((c: ChannelEntry) => c.id === id) || null
 }
 
 function updateComposerAccess () {

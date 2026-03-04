@@ -1,4 +1,83 @@
-// @ts-nocheck
+const CONNECTION_GATE_TICK_MS = 1000
+const CONNECTION_GATE_SUCCESS_MS = 500
+const CONNECTION_GATE_MAX_CONNECTING_PROGRESS = 94
+const WS_STARTUP_LOG_EVERY = 3
+
+let connectionGateTickTimer: ReturnType<typeof setInterval> | null = null
+let connectionGateHideTimer: ReturnType<typeof setTimeout> | null = null
+let connectionGateConnectingStartedAt = 0
+let connectionGateWasBlocked = true
+
+function clearConnectionGateTickTimer () {
+  if (!connectionGateTickTimer) return
+  clearInterval(connectionGateTickTimer)
+  connectionGateTickTimer = null
+}
+
+function clearConnectionGateHideTimer () {
+  if (!connectionGateHideTimer) return
+  clearTimeout(connectionGateHideTimer)
+  connectionGateHideTimer = null
+}
+
+function setConnectionGateProgress (progress: number) {
+  const pct = Math.max(0, Math.min(100, Number(progress) || 0))
+  dom.connectionGate?.style.setProperty('--connection-gate-progress', `${pct}`)
+  if (dom.connectionGateProgressFill) {
+    dom.connectionGateProgressFill.style.setProperty('--connection-gate-progress', `${pct}`)
+  }
+}
+
+function showConnectionGateSpinner () {
+  dom.connectionGate?.classList.remove('connection-gate--connected')
+  dom.connectionGateProgressFill?.classList.remove('text-quibble-green')
+  dom.connectionGateProgressFill?.classList.add('text-quibble-blurple')
+  dom.connectionGateIconSpinner?.classList.remove('hidden')
+  dom.connectionGateIconSuccess?.classList.add('hidden')
+}
+
+function showConnectionGateSuccess () {
+  dom.connectionGate?.classList.add('connection-gate--connected')
+  dom.connectionGateProgressFill?.classList.remove('text-quibble-blurple')
+  dom.connectionGateProgressFill?.classList.add('text-quibble-green')
+  dom.connectionGateIconSpinner?.classList.add('hidden')
+  dom.connectionGateIconSuccess?.classList.remove('hidden')
+}
+
+function isWsStartupQuietWindow () {
+  return !wsHasEverConnected && (Date.now() - wsBootStartedAt) < WS_STARTUP_QUIET_WINDOW_MS
+}
+
+function logWsStartupNoise (message: string) {
+  wsStartupLogCounter++
+  if ((wsStartupLogCounter % WS_STARTUP_LOG_EVERY) !== 1) return
+  console.debug(`[ws] ${message}`)
+}
+
+function logWsWarn (message: string, error?: unknown) {
+  if (isWsStartupQuietWindow()) {
+    logWsStartupNoise(message)
+    return
+  }
+  if (error !== undefined) {
+    console.warn(`[ws] ${message}`, error)
+    return
+  }
+  console.warn(`[ws] ${message}`)
+}
+
+function ensureConnectionGateTicking () {
+  if (connectionGateTickTimer) return
+  connectionGateTickTimer = setInterval(() => {
+    updateConnectionGate()
+  }, CONNECTION_GATE_TICK_MS)
+}
+
+function beginConnectionGateAttemptTimer () {
+  if (connectionGateConnectingStartedAt > 0) return
+  connectionGateConnectingStartedAt = Date.now()
+}
+
 function startRoomDiscoveryWindow () {
   const token = ++state.boot.sessionToken
   state.boot.roomDiscoveryReady = false
@@ -20,30 +99,64 @@ function updateConnectionGate () {
   const waitingForHistory = state.boot.connected && state.boot.identityReady && state.boot.roomDiscoveryReady && state.boot.pendingRoomHistory.size > 0
   const blocked = waitingForConnection || waitingForIdentity || waitingForDiscovery || waitingForHistory
 
-  dom.connectionGate.classList.toggle('hidden', !blocked)
-  if (!blocked) return
+  if (!blocked) {
+    clearConnectionGateTickTimer()
+    connectionGateConnectingStartedAt = 0
 
-  if (waitingForConnection) {
-    dom.connectionGateTitle.textContent = 'Connecting to DAT…'
-    dom.connectionGateDetail.textContent = 'Opening websocket and joining DHT peers'
+    if (connectionGateWasBlocked && !dom.connectionGate.classList.contains('hidden')) {
+      clearConnectionGateHideTimer()
+      connectionGateWasBlocked = false
+      if (dom.connectionGateTitle) dom.connectionGateTitle.textContent = 'Connected'
+      if (dom.connectionGateDetail) dom.connectionGateDetail.textContent = 'DAT connection established'
+      setConnectionGateProgress(100)
+      showConnectionGateSuccess()
+      connectionGateHideTimer = setTimeout(() => {
+        dom.connectionGate?.classList.add('hidden')
+      }, CONNECTION_GATE_SUCCESS_MS)
+      return
+    }
+
+    connectionGateWasBlocked = false
+    dom.connectionGate.classList.add('hidden')
     return
   }
+
+  connectionGateWasBlocked = true
+  clearConnectionGateHideTimer()
+  dom.connectionGate.classList.remove('hidden')
+  showConnectionGateSpinner()
+
+  if (waitingForConnection) {
+    beginConnectionGateAttemptTimer()
+    ensureConnectionGateTicking()
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - connectionGateConnectingStartedAt) / 1000))
+    const progress = Math.min(22 + (elapsedSeconds * 8), CONNECTION_GATE_MAX_CONNECTING_PROGRESS)
+    dom.connectionGateTitle.textContent = 'Waiting for backend service…'
+    dom.connectionGateDetail.textContent = `Trying websocket handshake and peer bootstrap (${elapsedSeconds}s)`
+    setConnectionGateProgress(progress)
+    return
+  }
+
+  clearConnectionGateTickTimer()
 
   if (waitingForIdentity) {
     dom.connectionGateTitle.textContent = 'Authenticating…'
     dom.connectionGateDetail.textContent = 'Loading your identity and room access'
+    setConnectionGateProgress(96)
     return
   }
 
   if (waitingForDiscovery) {
     dom.connectionGateTitle.textContent = 'Discovering rooms…'
     dom.connectionGateDetail.textContent = 'Checking available DAT room feeds'
+    setConnectionGateProgress(98)
     return
   }
 
   dom.connectionGateTitle.textContent = 'Syncing history…'
   const pending = state.boot.pendingRoomHistory.size
   dom.connectionGateDetail.textContent = `Downloading initial message pages for ${pending} room${pending === 1 ? '' : 's'}`
+  setConnectionGateProgress(99)
 }
 
 function clearWsConnectTimeout () {
@@ -66,22 +179,28 @@ function resetBootConnectionState () {
   state.boot.loadedRoomHistory.clear()
   clearHistoryTimers()
   state.boot.sessionToken++
+  connectionGateConnectingStartedAt = Date.now()
   dom.app.classList.remove('hidden')
   updateSecurityStatus()
   updateConnectionGate()
 }
 
-function scheduleReconnect (delay = WS_RECONNECT_DELAY_MS) {
-  if (wsReconnectTimer) return
+function scheduleReconnect (explicitDelay?: number) {
+  if (wsReconnectTimer) return 0
+  const delay = explicitDelay ?? wsReconnectDelay
+  const adjustedDelay = isWsStartupQuietWindow() ? Math.max(delay, WS_STARTUP_MIN_RETRY_MS) : delay
+  wsReconnectDelay = Math.min(wsReconnectDelay * 2, WS_RECONNECT_MAX_MS)
   wsReconnectTimer = setTimeout(() => {
     wsReconnectTimer = null
     connect()
-  }, delay)
+  }, adjustedDelay)
+  return adjustedDelay
 }
 
 function connect () {
   const token = ++wsSessionToken
   clearWsConnectTimeout()
+  beginConnectionGateAttemptTimer()
 
   if (state.ws) {
     state.ws.onopen = null
@@ -94,46 +213,51 @@ function connect () {
   try {
     state.ws = new WebSocket(`${proto}://${location.host}`)
   } catch (error) {
-    console.warn('[ws] failed to start socket, retrying soon', error)
+    logWsWarn('failed to start socket, retrying soon', error)
     resetBootConnectionState()
-    scheduleReconnect(1000)
+    scheduleReconnect()
     return
   }
 
   wsConnectTimeout = setTimeout(() => {
     if (token !== wsSessionToken) return
     if (state.ws?.readyState !== WebSocket.CONNECTING) return
-    console.warn('[ws] connect timeout, forcing reconnect')
+    logWsWarn('connect timeout, forcing reconnect')
     resetBootConnectionState()
     try {
       state.ws.close()
     } catch {}
-    scheduleReconnect(1000)
+    scheduleReconnect()
   }, WS_CONNECT_TIMEOUT_MS)
 
   state.ws.onopen = () => {
     if (token !== wsSessionToken) return
     console.log('[ws] connected')
+    wsHasEverConnected = true
+    wsStartupLogCounter = 0
     clearWsConnectTimeout()
     clearWsReconnectTimer()
+    wsReconnectDelay = WS_RECONNECT_BASE_MS
     state.boot.connected = true
     state.boot.identityReady = false
     state.boot.roomDiscoveryReady = false
     state.boot.pendingRoomHistory.clear()
     state.boot.loadedRoomHistory.clear()
+    connectionGateConnectingStartedAt = 0
     clearHistoryTimers()
     state.boot.sessionToken++
     dom.app.classList.remove('hidden')
     updateSecurityStatus()
     updateConnectionGate()
   }
-  state.ws.onmessage = (e) => {
+  state.ws.onmessage = (e: MessageEvent<string>) => {
     if (token !== wsSessionToken) return
     handleServerMessage(JSON.parse(e.data))
   }
   state.ws.onerror = (error) => {
     if (token !== wsSessionToken) return
-    console.warn('[ws] socket error', error)
+    if (isWsStartupQuietWindow()) logWsStartupNoise('socket error while backend is still booting')
+    else console.warn('[ws] socket error', error)
     if (state.ws?.readyState === WebSocket.CONNECTING || state.ws?.readyState === WebSocket.OPEN) {
       try {
         state.ws.close()
@@ -142,14 +266,44 @@ function connect () {
   }
   state.ws.onclose = () => {
     if (token !== wsSessionToken) return
-    console.log('[ws] disconnected, reconnecting in 2s…')
     clearWsConnectTimeout()
     resetBootConnectionState()
-    scheduleReconnect()
+    const reconnectDelay = scheduleReconnect()
+    if (reconnectDelay <= 0) return
+    if (isWsStartupQuietWindow()) logWsStartupNoise(`backend unavailable, retrying in ${reconnectDelay}ms…`)
+    else console.log(`[ws] disconnected, reconnecting in ${reconnectDelay}ms…`)
   }
 }
 
-function send (msg) {
+interface ServerEnvelope {
+  type: string
+  roomKey?: string
+  link?: string
+  writable?: boolean
+  iceServers?: unknown
+  publicKey?: string
+  fullName?: string
+  name?: string
+  username?: string
+  avatar?: string | null
+  setupDone?: boolean
+  presenceStatus?: string
+  messages?: ClientMessage[]
+  nextBeforeSeq?: number | null
+  msg?: ClientMessage
+  dataBase64?: string
+  mimeType?: string
+  fileName?: string
+  content?: string
+  seedPhrase?: string
+  peerKey?: string
+  connections?: number
+  rooms?: number
+  writers?: Record<string, number>
+  message?: string
+}
+
+function send (msg: { type?: string; [key: string]: unknown }) {
   if (msg?.type !== 'set-presence-status') {
     noteLocalPresenceActivity?.('server')
   }
@@ -158,44 +312,46 @@ function send (msg) {
   }
 }
 
-function normalizeRtcIceServers (iceServers) {
+function normalizeRtcIceServers (iceServers: unknown): IceServer[] {
   if (!Array.isArray(iceServers)) return []
   return iceServers
-    .map((entry) => {
+    .map((entry: unknown) => {
       if (!entry || typeof entry !== 'object') return null
-      const urls = Array.isArray(entry.urls)
-        ? entry.urls.map((url) => String(url || '').trim()).filter(Boolean)
-        : (String(entry.urls || '').trim() ? [String(entry.urls || '').trim()] : [])
+      const candidate = entry as { urls?: unknown; username?: unknown; credential?: unknown }
+      const urls = Array.isArray(candidate.urls)
+        ? candidate.urls.map((url: unknown) => String(url || '').trim()).filter(Boolean)
+        : (String(candidate.urls || '').trim() ? [String(candidate.urls || '').trim()] : [])
       if (urls.length === 0) return null
 
-      const normalized = { urls }
-      if (entry.username !== undefined) normalized.username = String(entry.username)
-      if (entry.credential !== undefined) normalized.credential = String(entry.credential)
+      const normalized: IceServer = { urls }
+      if (candidate.username !== undefined) normalized.username = String(candidate.username)
+      if (candidate.credential !== undefined) normalized.credential = String(candidate.credential)
       return normalized
     })
-    .filter(Boolean)
+    .filter((entry): entry is IceServer => Boolean(entry))
 }
 
-function handleServerMessage (msg) {
+function handleServerMessage (msg: ServerEnvelope) {
   switch (msg.type) {
     case 'rtc-config':
       state.rtcIceServers = normalizeRtcIceServers(msg.iceServers)
       break
 
     case 'identity':
+      if (!msg.publicKey) break
       state.boot.identityReady = true
       state.boot.pendingRoomHistory.clear()
       state.boot.loadedRoomHistory.clear()
       startRoomDiscoveryWindow()
-      state.identity = { publicKey: msg.publicKey }
+      state.identity = { publicKey: String(msg.publicKey) }
       state.profile = {
         fullName: msg.fullName || msg.name || '',
         username: msg.username || msg.name || '',
-        avatar: msg.avatar,
-        setupDone: msg.setupDone
+        avatar: msg.avatar ?? null,
+        setupDone: Boolean(msg.setupDone)
       }
-      if (PRESENCE_STATUSES.includes(msg.presenceStatus)) {
-        state.settings.presenceStatus = msg.presenceStatus
+      if (PRESENCE_STATUSES.includes(String(msg.presenceStatus || ''))) {
+        state.settings.presenceStatus = String(msg.presenceStatus)
         saveClientSettings()
       }
       state.lastPresenceActivityAt = Date.now()
@@ -221,11 +377,11 @@ function handleServerMessage (msg) {
       state.profile = {
         fullName: msg.fullName || msg.name || '',
         username: msg.username || msg.name || '',
-        avatar: msg.avatar,
-        setupDone: msg.setupDone
+        avatar: msg.avatar ?? null,
+        setupDone: Boolean(msg.setupDone)
       }
-      if (PRESENCE_STATUSES.includes(msg.presenceStatus)) {
-        state.settings.presenceStatus = msg.presenceStatus
+      if (PRESENCE_STATUSES.includes(String(msg.presenceStatus || ''))) {
+        state.settings.presenceStatus = String(msg.presenceStatus)
         saveClientSettings()
       }
       updateUserPanel()
@@ -237,6 +393,7 @@ function handleServerMessage (msg) {
       break
 
     case 'room-created':
+      if (!msg.roomKey || !msg.link) break
       addRoom(msg.roomKey, msg.link, { writable: msg.writable })
       applyPendingCreatedRoomProfile(msg.roomKey)
       selectRoom(msg.roomKey)
@@ -244,18 +401,21 @@ function handleServerMessage (msg) {
       break
 
     case 'room-joined':
+      if (!msg.roomKey || !msg.link) break
       addRoom(msg.roomKey, msg.link, { writable: msg.writable })
       selectRoom(msg.roomKey)
       requestRoomHistory(msg.roomKey, { count: 100 })
       break
 
     case 'room-info':
+      if (!msg.roomKey || !msg.link) break
       addRoom(msg.roomKey, msg.link, { writable: msg.writable })
       send({ type: 'watch-room', roomKey: msg.roomKey })
       requestRoomHistory(msg.roomKey, { count: 100 })
       break
 
     case 'room-permission': {
+      if (!msg.roomKey) break
       const room = state.rooms.get(msg.roomKey)
       if (room && typeof msg.writable === 'boolean') {
         room.writable = msg.writable
@@ -267,24 +427,26 @@ function handleServerMessage (msg) {
     }
 
     case 'room-deleted':
+      if (!msg.roomKey) break
       removeRoomLocal(msg.roomKey, { navigateHome: state.activeRoom === msg.roomKey })
       break
 
     case 'history': {
+      if (!msg.roomKey) break
       if (!state.messagesByRoom.has(msg.roomKey)) state.messagesByRoom.set(msg.roomKey, [])
       if (!state.seenSeqByRoom.has(msg.roomKey)) state.seenSeqByRoom.set(msg.roomKey, new Set())
-      const roomMsgs = state.messagesByRoom.get(msg.roomKey)
-      const seenSeq = state.seenSeqByRoom.get(msg.roomKey)
+      const roomMsgs = state.messagesByRoom.get(msg.roomKey)!
+      const seenSeq = state.seenSeqByRoom.get(msg.roomKey)!
 
-      for (const m of msg.messages) {
-        if (Number.isInteger(m?._seq) && seenSeq.has(m._seq)) continue
+      for (const m of (msg.messages || [])) {
+        if (Number.isInteger(m?._seq) && seenSeq.has(Number(m._seq))) continue
         if (!m?.id || state.seenIds.has(m.id)) continue
         state.seenIds.add(m.id)
-        if (Number.isInteger(m?._seq)) seenSeq.add(m._seq)
+        if (Number.isInteger(m?._seq)) seenSeq.add(Number(m._seq))
         roomMsgs.push(m)
       }
 
-      state.historyCursorByRoom.set(msg.roomKey, Number.isInteger(msg.nextBeforeSeq) ? msg.nextBeforeSeq : null)
+      state.historyCursorByRoom.set(msg.roomKey, Number.isInteger(msg.nextBeforeSeq) ? Number(msg.nextBeforeSeq) : null)
       state.historyLoadingByRoom.set(msg.roomKey, false)
       clearHistoryRequestTimeout(msg.roomKey)
       if (state.boot.pendingRoomHistory.has(msg.roomKey)) {
@@ -320,17 +482,18 @@ function handleServerMessage (msg) {
     }
 
     case 'message': {
+      if (!msg.roomKey || !msg.msg) break
       if (!state.messagesByRoom.has(msg.roomKey)) state.messagesByRoom.set(msg.roomKey, [])
       if (!state.seenSeqByRoom.has(msg.roomKey)) state.seenSeqByRoom.set(msg.roomKey, new Set())
-      const roomMsgs = state.messagesByRoom.get(msg.roomKey)
-      const seenSeq = state.seenSeqByRoom.get(msg.roomKey)
+      const roomMsgs = state.messagesByRoom.get(msg.roomKey)!
+      const seenSeq = state.seenSeqByRoom.get(msg.roomKey)!
 
-      if (Number.isInteger(msg.msg?._seq) && seenSeq.has(msg.msg._seq)) break
+      if (Number.isInteger(msg.msg?._seq) && seenSeq.has(Number(msg.msg._seq))) break
 
       const hasId = Boolean(msg.msg?.id)
       if (hasId && state.seenIds.has(msg.msg.id)) break
       if (hasId) state.seenIds.add(msg.msg.id)
-      if (Number.isInteger(msg.msg?._seq)) seenSeq.add(msg.msg._seq)
+      if (Number.isInteger(msg.msg?._seq)) seenSeq.add(Number(msg.msg._seq))
       roomMsgs.push(msg.msg)
 
       const isReactionUpdate = msg.msg?.type === 'reaction' || (msg.msg?.type === 'system' && msg.msg.action === 'message-reaction')
@@ -381,10 +544,10 @@ function handleServerMessage (msg) {
           }
         }
 
-        if (action === 'call-start') onIncomingCallStart(msg.msg, msg.roomKey)
-        if (action === 'call-join') onIncomingCallJoin(msg.msg, msg.roomKey)
-        if (action === 'call-signal') onIncomingCallSignal(msg.msg, msg.roomKey)
-        if (action === 'call-end') onIncomingCallEnd(msg.msg, msg.roomKey)
+        if (action === 'call-start') onIncomingCallStart(msg.msg, String(msg.roomKey))
+        if (action === 'call-join') onIncomingCallJoin(msg.msg, String(msg.roomKey))
+        if (action === 'call-signal') onIncomingCallSignal(msg.msg, String(msg.roomKey))
+        if (action === 'call-end') onIncomingCallEnd(msg.msg, String(msg.roomKey))
         if (action === 'call-start' || action === 'call-end' || action === 'call-join') addCallEventCard(msg.msg)
       }
 
@@ -403,19 +566,19 @@ function handleServerMessage (msg) {
         if ((msg.msg?.type === 'system' && msg.msg.action === 'message-edit') || isReactionUpdate) renderMessages()
         else appendMessage(msg.msg)
         if (!isReactionUpdate) scrollToBottom()
-        ensureUsernameUniquenessForRoom(msg.roomKey)
+        ensureUsernameUniquenessForRoom(String(msg.roomKey))
       } else {
-        if (!isReactionUpdate) markUnread(msg.roomKey)
+        if (!isReactionUpdate) markUnread(String(msg.roomKey))
       }
       break
     }
 
     case 'file-data': {
-      const blob = base64ToBlob(msg.dataBase64, msg.mimeType || 'application/octet-stream')
+      const blob = base64ToBlob(String(msg.dataBase64 || ''), msg.mimeType || 'application/octet-stream')
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = msg.fileName || 'download.bin'
+      a.download = String(msg.fileName || 'download.bin')
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -428,7 +591,7 @@ function handleServerMessage (msg) {
       break
 
     case 'seed-phrase-download': {
-      downloadTextFile(msg.fileName || 'quibble-seed.txt', msg.content || '')
+      downloadTextFile(String(msg.fileName || 'quibble-seed.txt'), String(msg.content || ''))
       break
     }
 
@@ -444,8 +607,23 @@ function handleServerMessage (msg) {
       break
 
     case 'peer-connected':
-      state.peers.add(msg.peerKey)
+      if (!msg.peerKey) break
+      state.peers.add(String(msg.peerKey))
       updateMemberList()
+      updateSecurityStatus()
+      break
+
+    case 'peer-disconnected':
+      if (!msg.peerKey) break
+      state.peers.delete(String(msg.peerKey))
+      updateMemberList()
+      updateSecurityStatus()
+      break
+
+    case 'swarm-stats':
+      state.swarmConnections = msg.connections ?? 0
+      state.swarmRooms = msg.rooms ?? 0
+      state.swarmWriters = msg.writers ?? {}
       updateSecurityStatus()
       break
 
@@ -461,12 +639,12 @@ function handleServerMessage (msg) {
       }
       state.boot.pendingRoomHistory.clear()
       updateConnectionGate()
-      appAlert(msg.message, { title: 'Server Error' })
+      appAlert(String(msg.message || 'Unknown server error'), { title: 'Server Error' })
       break
   }
 }
 
-function applyMessageEdits (roomKey) {
+function applyMessageEdits (roomKey: string) {
   const roomMsgs = state.messagesByRoom.get(roomKey) || []
   const byId = new Map()
 
@@ -482,11 +660,11 @@ function applyMessageEdits (roomKey) {
   }
 }
 
-function rebuildMessageReactions (roomKey) {
+function rebuildMessageReactions (roomKey: string) {
   const roomMsgs = state.messagesByRoom.get(roomKey) || []
   const byMessage = new Map()
 
-  const setReactionState = (messageId, emoji, sender, on) => {
+  const setReactionState = (messageId: string, emoji: string, sender: string, on: boolean) => {
     if (!messageId || !emoji || !sender) return
     const messageKey = String(messageId)
     const emojiKey = String(emoji)
@@ -520,7 +698,7 @@ function rebuildMessageReactions (roomKey) {
     if (entry?.type !== 'system' || entry?.action !== 'message-reaction') continue
     if (!entry?.data?.messageId || !entry?.data?.emoji || !entry?.sender) continue
 
-    setReactionState(entry.data.messageId, entry.data.emoji, entry.sender, entry.data.on !== false)
+    setReactionState(String(entry.data.messageId), String(entry.data.emoji), String(entry.sender), entry.data.on !== false)
   }
 
   state.messageReactionsByRoom.set(roomKey, byMessage)
@@ -558,9 +736,10 @@ function validateSetup () {
 }
 
 dom.setupFullName.addEventListener('input', validateSetup)
-dom.setupUsername.addEventListener('input', (e) => {
-  const clean = sanitizeUsername(e.target.value)
-  if (e.target.value !== clean) e.target.value = clean
+dom.setupUsername.addEventListener('input', (e: Event) => {
+  const target = e.target as HTMLInputElement | null
+  const clean = sanitizeUsername(target?.value || '')
+  if (target && target.value !== clean) target.value = clean
   validateSetup()
 })
 
@@ -578,8 +757,9 @@ dom.setupUsername.addEventListener('keydown', (e) => {
   }
 })
 
-dom.avatarInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0]
+dom.avatarInput.addEventListener('change', async (e: Event) => {
+  const target = e.target as HTMLInputElement | null
+  const file = target?.files?.[0]
   if (!file) return
   state.profile.avatar = await fileToDataURL(file)
   dom.avatarPreview.innerHTML = `<img src="${state.profile.avatar}" class="w-full h-full object-cover">`
@@ -622,7 +802,7 @@ function submitSetup () {
   updateUserPanel()
 }
 
-function sanitizeUsername (value) {
+function sanitizeUsername (value: unknown): string {
   return String(value || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24)
 }
 
@@ -630,8 +810,8 @@ function generateAnonUsername () {
   return `anon${Math.floor(1000 + Math.random() * 9000)}`
 }
 
-function collectRoomTakenUsernames (roomKey) {
-  const taken = new Set()
+function collectRoomTakenUsernames (roomKey: string): Set<string> {
+  const taken = new Set<string>()
   const msgs = state.messagesByRoom.get(roomKey) || []
   for (const msg of msgs) {
     if (!msg?.senderName) continue
@@ -642,11 +822,11 @@ function collectRoomTakenUsernames (roomKey) {
   return taken
 }
 
-function buildUsernameSuggestions (baseUsername, taken) {
+function buildUsernameSuggestions (baseUsername: string, taken: Set<string>): string[] {
   const base = sanitizeUsername(baseUsername) || 'anon'
-  const out = []
+  const out: string[] = []
 
-  const add = (candidate) => {
+  const add = (candidate: string) => {
     const clean = sanitizeUsername(candidate)
     if (!clean || taken.has(clean) || out.includes(clean)) return
     out.push(clean)
@@ -665,7 +845,7 @@ function closeUsernameConflictModal () {
   if (dom.usernameConflictError) dom.usernameConflictError.textContent = ''
 }
 
-function openUsernameConflictModal (roomKey, baseUsername, suggestions) {
+function openUsernameConflictModal (roomKey: string, baseUsername: string, suggestions: string[]) {
   if (!dom.usernameConflictModal || !dom.usernameConflictSuggestions) return
   const safeBase = sanitizeUsername(baseUsername) || 'anon'
 
@@ -686,7 +866,7 @@ function openUsernameConflictModal (roomKey, baseUsername, suggestions) {
   dom.usernameConflictModal.classList.remove('hidden')
 }
 
-function ensureUsernameUniquenessForRoom (roomKey) {
+function ensureUsernameUniquenessForRoom (roomKey: string) {
   if (!roomKey || roomKey !== state.activeRoom) return
 
   let current = sanitizeUsername(state.profile.username)
@@ -716,7 +896,7 @@ function ensureUsernameUniquenessForRoom (roomKey) {
   openUsernameConflictModal(roomKey, current, suggestions)
 }
 
-function applyUsernameConflictChoice (roomKey, candidate) {
+function applyUsernameConflictChoice (roomKey: string, candidate: string) {
   const clean = sanitizeUsername(candidate)
   if (!clean) return
   const conflict = state.usernameConflictByRoom.get(roomKey)

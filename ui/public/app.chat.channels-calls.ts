@@ -1,5 +1,4 @@
-// @ts-nocheck
-function getVoiceChannelParticipants (channelId) {
+function getVoiceChannelParticipants (channelId: string) {
   if (!state.activeRoom || !channelId || !state.activeCall) return []
   if (state.activeCall.roomKey !== state.activeRoom || state.activeCall.channelId !== channelId) return []
 
@@ -46,12 +45,17 @@ function renderChannelLists () {
     btn.innerHTML = `<span class="text-quibble-text-m">#</span><span>${esc(channel.name)}</span>${channel.modOnly ? '<span class="ml-auto text-[10px]">🔒</span>' : ''}`
 
     btn.addEventListener('click', () => {
-      state.activeTextChannelByRoom.set(state.activeRoom, channel.id)
+      const currentRoom = state.activeRoom
+      if (!currentRoom) return
+      const prevChannel = state.activeTextChannelByRoom.get(currentRoom)
+      if (prevChannel === channel.id && !state.activeDmKey) return
+
+      state.activeTextChannelByRoom.set(currentRoom, channel.id)
       state.activeDmKey = null
       state.activeThreadRootId = null
       clearSearchResultsView()
       dom.chatHeaderTitle.textContent = channel.name
-      const roomName = state.rooms.get(state.activeRoom)?.name || 'Room'
+      const roomName = state.rooms.get(currentRoom)?.name || 'Room'
       dom.chatHeaderDesc.textContent = channel.id === 'general'
         ? `${roomName} channel`
         : `#${channel.name}`
@@ -60,6 +64,7 @@ function renderChannelLists () {
       renderMessages()
       renderPinnedBar()
       closeThreadPanel()
+      updateComposerAccess()
       updateHeaderActionVisibility()
       scrollToBottom()
     })
@@ -103,16 +108,18 @@ function renderChannelLists () {
       ${participantsHtml}
     `
 
-    const selectBtn = row.querySelector('.voice-select')
-    const joinBtn = row.querySelector('.voice-join')
+    const selectBtn = row.querySelector('.voice-select') as HTMLButtonElement | null
+    const joinBtn = row.querySelector('.voice-join') as HTMLButtonElement | null
 
-    selectBtn.addEventListener('click', () => {
+    selectBtn?.addEventListener('click', () => {
+      if (!state.activeRoom) return
       state.activeVoiceChannelByRoom.set(state.activeRoom, channel.id)
       renderChannelLists()
     })
 
-    joinBtn.addEventListener('click', async () => {
+    joinBtn?.addEventListener('click', async () => {
       if (isConnectedHere) return
+      if (!state.activeRoom) return
       state.activeVoiceChannelByRoom.set(state.activeRoom, channel.id)
       await startCall('voice', { inlineChannelUi: true })
       renderChannelLists()
@@ -126,10 +133,12 @@ function renderChannelLists () {
 }
 
 function getVisibleMessagesForActiveTextChannel () {
+  if (!state.activeRoom) return []
+  const activeRoom = state.activeRoom
   const roomMsgs = state.messagesByRoom.get(state.activeRoom) || []
-  const activeText = state.activeTextChannelByRoom.get(state.activeRoom) || 'general'
+  const activeText = state.activeTextChannelByRoom.get(activeRoom) || 'general'
   return roomMsgs.filter((msg) => {
-    if (msg?.sender && msg.type !== 'system' && isSenderBlockedForChannel(state.activeRoom, activeText, msg.sender)) return false
+    if (msg?.sender && msg.type !== 'system' && isSenderBlockedForChannel(activeRoom, activeText, msg.sender)) return false
     if (!messageBelongsToTextChannel(msg, activeText)) return false
     if (state.activeDmKey) return msg.dmKey === state.activeDmKey
     if (msg.dmKey) return false
@@ -138,7 +147,7 @@ function getVisibleMessagesForActiveTextChannel () {
   })
 }
 
-function messageBelongsToTextChannel (msg, channelId) {
+function messageBelongsToTextChannel (msg: ClientMessage, channelId: string) {
   if (!msg) return false
 
   if (msg.type === 'text' || msg.type === 'file') {
@@ -224,9 +233,9 @@ dom.btnCallFullscreenMenu?.addEventListener('click', async () => {
   refreshCallControlsMenu?.()
 })
 
-document.addEventListener('click', (e) => {
+document.addEventListener('click', (e: MouseEvent) => {
   if (!dom.channelSearchDropdown || !dom.channelSearch) return
-  const target = e.target
+  const target = e.target as Node | null
   if (dom.channelSearchDropdown.contains(target) || target === dom.channelSearch || target === dom.btnChannelSearchSubmit) return
   hideSearchDropdown()
 

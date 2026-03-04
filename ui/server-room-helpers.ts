@@ -1,7 +1,15 @@
-// @ts-nocheck
 import { createServer as createNetServer } from 'node:net'
+import type { Room } from '../lib/room.js'
 
-export async function getRoomOwner (room) {
+interface HistoryMessage {
+  type?: string
+  action?: string
+  sender?: string
+  senderName?: string
+  data?: Record<string, unknown>
+}
+
+export async function getRoomOwner (room: Room) {
   const history = await room.history(1000)
   let owner = null
 
@@ -12,21 +20,21 @@ export async function getRoomOwner (room) {
   }
 
   if (!owner) {
-    const firstSender = history.find((msg) => msg?.sender)?.sender
+    const firstSender = (history as HistoryMessage[]).find((msg: HistoryMessage) => msg?.sender)?.sender
     if (firstSender) owner = String(firstSender)
   }
 
   return owner
 }
 
-export async function getRoomAdmins (room) {
+export async function getRoomAdmins (room: Room) {
   const history = await room.history(1000)
   let admins = null
   const owner = await getRoomOwner(room)
 
   for (const msg of history) {
     if (msg?.type === 'system' && msg?.action === 'room-admin-set' && Array.isArray(msg?.data?.admins)) {
-      admins = new Set(msg.data.admins.map((v) => String(v)))
+      admins = new Set((msg.data.admins as unknown[]).map((v: unknown) => String(v)))
     }
   }
 
@@ -39,7 +47,7 @@ export async function getRoomAdmins (room) {
   return admins
 }
 
-export async function isRoomAdmin (room, publicKeyHex) {
+export async function isRoomAdmin (room: Room, publicKeyHex: string) {
   const admins = await getRoomAdmins(room)
   if (admins.size === 0) {
     return Boolean(room.writable)
@@ -48,7 +56,7 @@ export async function isRoomAdmin (room, publicKeyHex) {
   return admins.has(publicKeyHex)
 }
 
-export async function getRoomModerationState (room) {
+export async function getRoomModerationState (room: Room) {
   const history = await room.history(2000)
   const bans = new Set()
   const banNames = new Map()
@@ -93,7 +101,7 @@ export async function getRoomModerationState (room) {
   return { bans, banNames, kickedFromRoom, roomKickNames, kickedByChannel }
 }
 
-export async function getModerationError (room, publicKeyHex, channelId = null) {
+export async function getModerationError (room: Room, publicKeyHex: string, channelId: string | null = null) {
   const moderationState = await getRoomModerationState(room)
   if (moderationState.bans.has(publicKeyHex)) return 'You are banned from this room.'
   if (moderationState.kickedFromRoom.has(publicKeyHex)) return 'You have been kicked from this server.'
@@ -103,7 +111,7 @@ export async function getModerationError (room, publicKeyHex, channelId = null) 
   return null
 }
 
-export async function resolveUserByUsername (room, username) {
+export async function resolveUserByUsername (room: Room, username: string) {
   const target = String(username || '').trim().toLowerCase()
   if (!target) return null
 
@@ -118,7 +126,7 @@ export async function resolveUserByUsername (room, username) {
   return null
 }
 
-export async function channelIsModOnly (room, channelId) {
+export async function channelIsModOnly (room: Room, channelId: string) {
   const history = await room.history(1000)
   const channelFlags = new Map()
 
@@ -130,7 +138,7 @@ export async function channelIsModOnly (room, channelId) {
   return Boolean(channelFlags.get(String(channelId)))
 }
 
-export async function findOpenPort (startPort) {
+export async function findOpenPort (startPort: number) {
   if (process.env.PORT) return startPort
 
   for (let port = startPort; port < startPort + 20; port++) {
@@ -141,11 +149,11 @@ export async function findOpenPort (startPort) {
   throw new Error(`Could not find open port in range ${startPort}-${startPort + 19}`)
 }
 
-function canListen (port) {
+function canListen (port: number) {
   return new Promise((resolve, reject) => {
     const probe = createNetServer()
 
-    probe.once('error', (err) => {
+    probe.once('error', (err: NodeJS.ErrnoException) => {
       probe.close()
       if (err?.code === 'EADDRINUSE') return resolve(false)
       reject(err)

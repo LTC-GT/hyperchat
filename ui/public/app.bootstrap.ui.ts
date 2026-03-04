@@ -1,4 +1,3 @@
-// @ts-nocheck
 function fitUserSettingsModal () {
   const modal = dom.userSettingsModal
   const scaleWrap = dom.userSettingsScaleWrap
@@ -63,7 +62,7 @@ function closeUserSettings () {
 
 function renderStatusMenuSelection () {
   const current = state.settings.presenceStatus || 'active'
-  for (const option of document.querySelectorAll('.status-option')) {
+  for (const option of Array.from(document.querySelectorAll('.status-option'))) {
     const value = option.getAttribute('data-status')
     const selected = value === current
     option.classList.toggle('bg-quibble-active', selected)
@@ -92,7 +91,7 @@ function positionStatusMenu () {
   dom.userStatusMenu.style.transform = 'translateY(-100%)'
 }
 
-function toggleStatusMenu (forceOpen) {
+function toggleStatusMenu (forceOpen?: boolean) {
   if (!dom.userStatusMenu) return
   const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : dom.userStatusMenu.classList.contains('hidden')
   if (shouldOpen) positionStatusMenu()
@@ -111,7 +110,7 @@ function hydrateSettingsModal () {
   dom.settingsRingtone.value = state.settings.ringtone
 
   if (dom.settingsStunPreset) {
-    dom.settingsStunPreset.value = state.settings.stunPreset || 'google'
+    dom.settingsStunPreset.value = state.settings.stunPreset || 'cloudflare'
     toggleCustomStunVisibility(state.settings.stunPreset)
   }
   if (dom.settingsCustomStunUrl) dom.settingsCustomStunUrl.value = state.settings.customStunUrl || ''
@@ -168,13 +167,13 @@ function renderP2PNetworkStatus () {
   scheduleFitUserSettingsModal()
 }
 
-function extractIceCandidateType (candidateLine) {
+function extractIceCandidateType (candidateLine: string | null | undefined): string {
   if (!candidateLine) return ''
   const match = String(candidateLine).match(/\btyp\s+([a-z]+)/i)
   return (match?.[1] || '').toLowerCase()
 }
 
-function summarizeCandidateTypes (typesSet) {
+function summarizeCandidateTypes (typesSet: Set<string>): string {
   const types = [...typesSet].filter(Boolean)
   if (types.length === 0) return 'no ICE candidates gathered'
   return `candidate types: ${types.join(', ')}`
@@ -192,11 +191,11 @@ function probeP2PNetwork () {
       iceCandidatePoolSize: 2
     })
 
-    const candidateTypes = new Set()
+    const candidateTypes = new Set<string>()
     let settled = false
-    let timer = null
+    let timer: ReturnType<typeof setTimeout> | null = null
 
-    const finish = (payload) => {
+    const finish = (payload: { status: string; summary: string }) => {
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
@@ -253,7 +252,7 @@ async function runP2PNetworkTest () {
   state.p2pNetworkTest.summary = ''
   renderP2PNetworkStatus()
 
-  const result = await probeP2PNetwork()
+  const result = await probeP2PNetwork() as { status: string; summary: string }
   if (token !== state.p2pNetworkTest.runToken) return
 
   state.p2pNetworkTest.status = result.status
@@ -266,7 +265,7 @@ async function refreshMediaDevices () {
   if (!navigator.mediaDevices?.enumerateDevices) return
 
   const permissionQuery = navigator.permissions?.query
-    ? async (name) => {
+    ? async (name: PermissionName) => {
         try {
           const result = await navigator.permissions.query({ name })
           return result?.state || 'prompt'
@@ -308,7 +307,7 @@ async function refreshMediaDevices () {
   }
 }
 
-function toggleCustomStunVisibility (preset) {
+function toggleCustomStunVisibility (preset: string) {
   if (!dom.settingsCustomStunWrap) return
   dom.settingsCustomStunWrap.classList.toggle('hidden', preset !== 'custom')
 }
@@ -323,7 +322,7 @@ dom.btnUserSettingsSidebar?.addEventListener('click', (e) => {
   openUserSettings()
 })
 dom.btnProfileQuick?.addEventListener('click', (event) => {
-  if (event.target?.closest('#btnToggleMicGlobal') || event.target?.closest('#btnToggleCameraGlobal') || event.target?.closest('#btnUserSettingsSidebar') || event.target?.closest('#btnInvite')) return
+  if ((event.target as HTMLElement)?.closest('#btnToggleMicGlobal') || (event.target as HTMLElement)?.closest('#btnToggleCameraGlobal') || (event.target as HTMLElement)?.closest('#btnUserSettingsSidebar') || (event.target as HTMLElement)?.closest('#btnInvite')) return
   event.stopPropagation()
   toggleStatusMenu()
 })
@@ -333,7 +332,7 @@ dom.btnAvatarStatus?.addEventListener('click', (event) => {
   toggleStatusMenu()
 })
 
-for (const option of document.querySelectorAll('.status-option')) {
+for (const option of Array.from(document.querySelectorAll('.status-option'))) {
   option.addEventListener('click', () => {
     const value = option.getAttribute('data-status')
     if (!value || typeof setPresenceStatus !== 'function') return
@@ -345,7 +344,7 @@ for (const option of document.querySelectorAll('.status-option')) {
 
 document.addEventListener('click', (event) => {
   if (!dom.userStatusMenu || dom.userStatusMenu.classList.contains('hidden')) return
-  if (event.target?.closest('#btnProfileQuick') || event.target?.closest('#userStatusMenu')) return
+  if ((event.target as HTMLElement)?.closest('#btnProfileQuick') || (event.target as HTMLElement)?.closest('#userStatusMenu')) return
   dom.userStatusMenu.classList.add('hidden')
 })
 
@@ -388,7 +387,7 @@ dom.btnSaveUserSettings?.addEventListener('click', async () => {
   state.settings.recordSelfInCall = Boolean(dom.settingsRecordSelf?.checked)
   state.settings.notificationTone = dom.settingsNotificationTone?.value || 'chime'
   state.settings.ringtone = dom.settingsRingtone?.value || 'ring-bell'
-  state.settings.stunPreset = dom.settingsStunPreset?.value || 'google'
+  state.settings.stunPreset = dom.settingsStunPreset?.value || 'cloudflare'
   state.settings.customStunUrl = (dom.settingsCustomStunUrl?.value || '').trim()
   saveClientSettings()
   if (state.activeCall && typeof applyCallBitrate === 'function') {
@@ -432,8 +431,9 @@ dom.btnUploadSeedPhrase?.addEventListener('click', () => {
   dom.seedPhraseUploadInput?.click()
 })
 
-dom.seedPhraseUploadInput?.addEventListener('change', async (event) => {
-  const file = event.target?.files?.[0]
+dom.seedPhraseUploadInput?.addEventListener('change', async (event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  const file = target?.files?.[0]
   if (!file) return
 
   try {
@@ -507,7 +507,7 @@ function pickCreateRoomEmoji () {
   return CREATE_ROOM_EMOJI_OPTIONS[idx]
 }
 
-function normalizeCreateRoomName (value) {
+function normalizeCreateRoomName (value: string): string {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 48)
 }
 
@@ -543,7 +543,7 @@ function renderCreateRoomDraft () {
   }
 }
 
-function showRoomModalStep (step) {
+function showRoomModalStep (step: 'pick' | 'create') {
   const creating = step === 'create'
   dom.roomModalStepPick?.classList.toggle('hidden', creating)
   dom.roomModalFooterPick?.classList.toggle('hidden', creating)
@@ -565,7 +565,7 @@ function closeRoomModal () {
   showRoomModalStep('pick')
 }
 
-function applyPendingCreatedRoomProfile (roomKey) {
+function applyPendingCreatedRoomProfile (roomKey: string) {
   const pending = state.pendingCreatedRoomProfile
   if (!pending) return
   state.pendingCreatedRoomProfile = null
@@ -594,8 +594,9 @@ dom.btnCreateRoom.addEventListener('click', () => {
 
 dom.btnCreateRoomBack?.addEventListener('click', () => showRoomModalStep('pick'))
 
-dom.createRoomNameInput?.addEventListener('input', (event) => {
-  state.createRoomDraft.name = normalizeCreateRoomName(event.target?.value || '')
+dom.createRoomNameInput?.addEventListener('input', (event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  state.createRoomDraft.name = normalizeCreateRoomName(target?.value || '')
   renderCreateRoomDraft()
 })
 
@@ -612,8 +613,9 @@ dom.btnCreateRoomUploadIcon?.addEventListener('click', (event) => {
   dom.createRoomIconInput?.click()
 })
 
-dom.createRoomIconInput?.addEventListener('change', async (event) => {
-  const file = event.target?.files?.[0]
+dom.createRoomIconInput?.addEventListener('change', async (event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  const file = target?.files?.[0]
   if (!file) return
   state.createRoomDraft.imageData = await fileToDataURL(file)
   state.createRoomDraft.mimeType = file.type || 'image/webp'
@@ -660,7 +662,7 @@ function joinRoom () {
   closeRoomModal()
 }
 
-function requestRoomHistory (roomKey, { count = 100, beforeSeq = null } = {}) {
+function requestRoomHistory (roomKey: string, { count = 100, beforeSeq = null }: { count?: number; beforeSeq?: number | null } = {}) {
   if (!roomKey) return
   if (state.historyLoadingByRoom.get(roomKey)) return
 
@@ -675,7 +677,7 @@ function requestRoomHistory (roomKey, { count = 100, beforeSeq = null } = {}) {
   send({ type: 'get-history', roomKey, count, beforeSeq })
 }
 
-function armHistoryRequestTimeout (roomKey) {
+function armHistoryRequestTimeout (roomKey: string) {
   clearHistoryRequestTimeout(roomKey)
   const timer = setTimeout(() => {
     state.historyLoadingByRoom.set(roomKey, false)
@@ -685,7 +687,7 @@ function armHistoryRequestTimeout (roomKey) {
   state.historyTimeoutByRoom.set(roomKey, timer)
 }
 
-function clearHistoryRequestTimeout (roomKey) {
+function clearHistoryRequestTimeout (roomKey: string) {
   const timer = state.historyTimeoutByRoom.get(roomKey)
   if (timer) clearTimeout(timer)
   state.historyTimeoutByRoom.delete(roomKey)
@@ -702,6 +704,7 @@ function clearHistoryTimers () {
 
 dom.btnInvite.addEventListener('click', (event) => {
   event.stopPropagation()
+  if (!state.activeRoom) return
   const room = state.rooms.get(state.activeRoom)
   if (!room) return
   dom.inviteLinkDisplay.value = room.link

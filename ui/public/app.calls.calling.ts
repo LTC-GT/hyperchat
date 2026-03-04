@@ -1,4 +1,3 @@
-// @ts-nocheck
 /* ===================================================================
    Native WebRTC video/voice calling for Quibble
    ===================================================================
@@ -25,10 +24,11 @@
 /* ─── Module state ─────────────────────────────────────────────────── */
 
 const pendingIceCandidates = new Map()  // remotePeerId → [RTCIceCandidate]
+type RtcPeer = RTCPeerConnection & { _makingOffer: boolean; _ignoreOffer: boolean }
 
 /* ─── Peer identity ────────────────────────────────────────────────── */
 
-function getLocalPeerId () {
+function getLocalPeerId (): string | null {
   const pub = state.identity?.publicKey
   if (!pub) return null
   return String(pub)
@@ -36,22 +36,22 @@ function getLocalPeerId () {
 
 /* ─── ICE config (STUN + TURN for cross-network P2P) ──────────────── */
 
-const STUN_PRESETS = {
+const STUN_PRESETS: Record<'cloudflare' | 'google' | 'metered' | 'twilio', IceServer> = {
+  cloudflare: { urls: 'stun:stun.cloudflare.com:3478' },
   google:     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   metered:    { urls: 'stun:stun.relay.metered.ca:80' },
-  twilio:     { urls: 'stun:global.stun.twilio.com:3478' },
-  cloudflare: { urls: 'stun:stun.cloudflare.com:3478' },
-  mozilla:    { urls: 'stun:stun.services.mozilla.com:3478' }
+  twilio:     { urls: 'stun:global.stun.twilio.com:3478' }
 }
 
-function getStunServerEntry () {
-  const preset = state.settings.stunPreset || 'google'
+function getStunServerEntry (): IceServer {
+  const preset = state.settings.stunPreset || 'cloudflare'
   if (preset === 'custom') {
     const url = (state.settings.customStunUrl || '').trim()
     if (url) return { urls: url }
-    return STUN_PRESETS.google
+    return STUN_PRESETS.cloudflare
   }
-  return STUN_PRESETS[preset] || STUN_PRESETS.google
+  if (preset in STUN_PRESETS) return STUN_PRESETS[preset as keyof typeof STUN_PRESETS]
+  return STUN_PRESETS.cloudflare
 }
 
 function getRtcConfig () {
@@ -70,7 +70,7 @@ function getRtcConfig () {
 
 /* ─── Signaling via Autobase ───────────────────────────────────────── */
 
-function sendCallSignal (payload) {
+function sendCallSignal (payload: Record<string, unknown>) {
   send({
     type: 'call-signal',
     roomKey: state.activeCall?.roomKey,
@@ -87,7 +87,7 @@ function sendCallSignal (payload) {
  * Determine politeness for the Perfect Negotiation pattern.
  * The peer with the lexicographically smaller ID is 'polite'.
  */
-function isPolite (remotePeerId) {
+function isPolite (remotePeerId: string): boolean {
   const local = getLocalPeerId()
   if (!local) return false
   return local < remotePeerId
@@ -96,13 +96,13 @@ function isPolite (remotePeerId) {
 /**
  * Create an RTCPeerConnection for the given remote peer.
  */
-function createPeerConnection (remotePeerId) {
+function createPeerConnection (remotePeerId: string): RtcPeer {
   if (state.peerConnections.has(remotePeerId)) {
-    return state.peerConnections.get(remotePeerId)
+    return state.peerConnections.get(remotePeerId) as RtcPeer
   }
 
   const config = getRtcConfig()
-  const pc = new RTCPeerConnection(config)
+  const pc = new RTCPeerConnection(config) as RtcPeer
   state.peerConnections.set(remotePeerId, pc)
 
   // Track negotiation state for Perfect Negotiation
@@ -176,7 +176,7 @@ function createPeerConnection (remotePeerId) {
         type: 'offer',
         from: getLocalPeerId(),
         to: remotePeerId,
-        sdp: pc.localDescription.sdp
+        sdp: pc.localDescription?.sdp || ''
       })
     } catch (err) {
       console.error('[WebRTC] negotiationneeded error:', err)
@@ -190,7 +190,7 @@ function createPeerConnection (remotePeerId) {
 
 /* ─── Handle incoming signaling messages ───────────────────────────── */
 
-async function handleOffer (remotePeerId, sdp) {
+async function handleOffer (remotePeerId: string, sdp: string) {
   const pc = createPeerConnection(remotePeerId)
   const polite = isPolite(remotePeerId)
 
@@ -212,11 +212,11 @@ async function handleOffer (remotePeerId, sdp) {
     type: 'answer',
     from: getLocalPeerId(),
     to: remotePeerId,
-    sdp: pc.localDescription.sdp
+    sdp: pc.localDescription?.sdp || ''
   })
 }
 
-async function handleAnswer (remotePeerId, sdp) {
+async function handleAnswer (remotePeerId: string, sdp: string) {
   const pc = state.peerConnections.get(remotePeerId)
   if (!pc) return
 
@@ -229,7 +229,7 @@ async function handleAnswer (remotePeerId, sdp) {
   drainPendingCandidates(remotePeerId, pc)
 }
 
-async function handleIceCandidate (remotePeerId, candidate) {
+async function handleIceCandidate (remotePeerId: string, candidate: RTCIceCandidateInit) {
   const pc = state.peerConnections.get(remotePeerId)
   if (!pc || !pc.remoteDescription) {
     // Buffer the candidate until we have a remote description
@@ -249,7 +249,7 @@ async function handleIceCandidate (remotePeerId, candidate) {
   }
 }
 
-function drainPendingCandidates (remotePeerId, pc) {
+function drainPendingCandidates (remotePeerId: string, pc: RTCPeerConnection) {
   const buffered = pendingIceCandidates.get(remotePeerId)
   if (!buffered || buffered.length === 0) return
   pendingIceCandidates.delete(remotePeerId)
@@ -258,7 +258,7 @@ function drainPendingCandidates (remotePeerId, pc) {
   }
 }
 
-function restartIce (remotePeerId) {
+function restartIce (remotePeerId: string) {
   const pc = state.peerConnections.get(remotePeerId)
   if (!pc || pc.connectionState === 'closed') return
   try { pc.restartIce() } catch (e) { console.warn('[WebRTC] restartIce error:', e) }
@@ -266,7 +266,7 @@ function restartIce (remotePeerId) {
 
 /* ─── Outgoing call to a remote peer ───────────────────────────────── */
 
-async function callPeer (remotePeerId) {
+async function callPeer (remotePeerId: string) {
   if (!state.localCallStream) { console.error('[WebRTC] callPeer: no local stream'); return }
   if (remotePeerId === getLocalPeerId()) return  // don't call self
 
@@ -274,11 +274,11 @@ async function callPeer (remotePeerId) {
   createPeerConnection(remotePeerId)
 }
 
-function delay (ms) { return new Promise((r) => setTimeout(r, ms)) }
+function delay (ms: number) { return new Promise((r) => setTimeout(r, ms)) }
 
 /* ─── Scope helpers ──────────────────────────────────────────────── */
 
-function resolveCallScope (opts = {}) {
+function resolveCallScope (opts: { inlineChannelUi?: boolean; channelId?: string } = {}) {
   const roomKey = state.activeRoom
   if (!roomKey) return null
 
@@ -296,7 +296,7 @@ function resolveCallScope (opts = {}) {
   return { scope, roomKey, channelId, dmKey, dmParticipants }
 }
 
-function callMatchesCurrentView (data, roomKey) {
+function callMatchesCurrentView (data: Record<string, unknown> | null | undefined, roomKey: string) {
   if (!state.activeRoom || state.activeRoom !== roomKey) return false
 
   const dmKey = data?.dmKey ? String(data.dmKey) : null
@@ -313,7 +313,7 @@ function callMatchesCurrentView (data, roomKey) {
   return true
 }
 
-function callMatchesActiveCallScope (data) {
+function callMatchesActiveCallScope (data: Record<string, unknown> | null | undefined) {
   if (!state.activeCall) return false
   if (String(data?.callId || '') !== String(state.activeCall.id || '')) return false
 
@@ -324,29 +324,31 @@ function callMatchesActiveCallScope (data) {
   return String(data?.channelId || 'general') === String(state.activeCall.channelId || 'general')
 }
 
-function getCallScopeLabel (scope) {
+function getCallScopeLabel (scope: { dmKey?: string | null; scope?: string; roomKey?: string; channelId?: string }) {
   if (scope?.dmKey) return 'this DM'
+  const roomKey = String(scope.roomKey || '')
+  const channelId = String(scope.channelId || '')
   if (scope?.scope === 'voice') {
-    const vc = getChannelById(scope.roomKey, 'voice', scope.channelId)
+    const vc = getChannelById(roomKey, 'voice', channelId)
     return vc ? 'voice ' + vc.name : 'voice channel'
   }
 
-  const tc = getChannelById(scope?.roomKey, 'text', scope?.channelId)
+  const tc = getChannelById(roomKey, 'text', channelId)
   return tc ? '#' + tc.name : '#general'
 }
 
 /* ─── Media acquisition ────────────────────────────────────────────── */
 
-async function requestCallMedia (mode) {
+async function requestCallMedia (mode: string) {
   try {
     const micEnabled = state.settings.micEnabled !== false
     const camEnabled = state.settings.cameraEnabled !== false
-    const audio = {
+    const audio: MediaTrackConstraintSet & { deviceId?: { exact: string } } = {
       noiseSuppression: Boolean(state.settings.noiseCancellation),
       echoCancellation: Boolean(state.settings.noiseCancellation)
     }
     if (state.settings.micId) audio.deviceId = { exact: state.settings.micId }
-    const video = {
+    const video: MediaTrackConstraintSet & { deviceId?: { exact: string } } = {
       width: state.settings.enableHD === false
         ? { ideal: 960, max: 1280 }
         : { ideal: 1920, max: 2560 },
@@ -372,8 +374,8 @@ async function requestCallMedia (mode) {
       forceMutedTracks = true
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints)
-    window.localStream = stream
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    (window as any).localStream = stream
 
     if (mode === 'video' && camEnabled) {
       const liveVideo = stream.getVideoTracks().find((t) => t.readyState === 'live') || null
@@ -403,7 +405,7 @@ async function requestCallMedia (mode) {
 
 /* ─── Call lifecycle ───────────────────────────────────────────────── */
 
-async function startCall (mode, options = {}) {
+async function startCall (mode: string, options: { inlineChannelUi?: boolean; channelId?: string; dmKey?: string; dmParticipants?: string[] } = {}) {
   const scope = resolveCallScope(options)
   if (!scope) return
   if (state.activeCall) await endCall(true)
@@ -445,7 +447,7 @@ async function startCall (mode, options = {}) {
   })
 }
 
-async function joinCall (callId, mode, channelId, options = {}) {
+async function joinCall (callId: string, mode: string, channelId: string, options: { scope?: string; inlineChannelUi?: boolean; dmKey?: string | null; dmParticipants?: string[] | null; peerId?: string | null } = {}) {
   stopRingtoneLoop()
   const stream = await requestCallMedia(mode)
   if (!stream || !state.activeRoom) return
@@ -490,8 +492,10 @@ async function joinCall (callId, mode, channelId, options = {}) {
   if (options.peerId && options.peerId !== getLocalPeerId()) {
     setTimeout(() => {
       if (state.activeCall && state.localCallStream) {
-        console.log('[WebRTC] Joiner calling starter:', options.peerId.slice(0, 8))
-        callPeer(options.peerId)
+        const peerId = options.peerId
+        if (!peerId) return
+        console.log('[WebRTC] Joiner calling starter:', peerId.slice(0, 8))
+        callPeer(peerId)
       }
     }, 500)
   }
@@ -499,21 +503,22 @@ async function joinCall (callId, mode, channelId, options = {}) {
 
 /* ─── Incoming Autobase messages ───────────────────────────────────── */
 
-async function onIncomingCallStart (msg, roomKey) {
+async function onIncomingCallStart (msg: ClientMessage, roomKey: string) {
   if (!callMatchesCurrentView(msg?.data, roomKey)) return
   if (msg.sender === state.identity?.publicKey) return
   if (state.activeCall) return
 
-  const callId = msg.data?.callId
-  const mode = msg.data?.mode || 'voice'
-  const channelId = msg.data?.channelId || 'general'
-  const starterPeerId = msg.data?.peerId || null
+  const data = (msg.data || {}) as Record<string, unknown>
+  const callId = String(data.callId || '')
+  const mode = String(data.mode || 'voice')
+  const channelId = String(data.channelId || 'general')
+  const starterPeerId = data.peerId ? String(data.peerId) : null
   const scope = {
-    scope: msg.data?.scope || (msg.data?.dmKey ? 'dm' : 'text'),
+    scope: String(data.scope || (data.dmKey ? 'dm' : 'text')),
     roomKey,
     channelId,
-    dmKey: msg.data?.dmKey || null,
-    dmParticipants: Array.isArray(msg.data?.dmParticipants) ? msg.data.dmParticipants : null
+    dmKey: data.dmKey ? String(data.dmKey) : null,
+    dmParticipants: Array.isArray(data.dmParticipants) ? data.dmParticipants.map((entry) => String(entry)) : null
   }
   if (!callId) return
 
@@ -529,25 +534,25 @@ async function onIncomingCallStart (msg, roomKey) {
   joinCall(callId, mode, channelId, Object.assign({}, scope, { peerId: starterPeerId }))
 }
 
-async function onIncomingCallJoin (msg, roomKey) {
+async function onIncomingCallJoin (msg: ClientMessage, roomKey: string) {
   if (!state.activeRoom || state.activeRoom !== roomKey) return
   if (!state.activeCall) return
   if (!callMatchesActiveCallScope(msg?.data || {})) return
   if (msg.sender === state.identity?.publicKey) return
 
-  const remotePeerId = msg.data?.peerId
+  const remotePeerId = msg.data?.peerId ? String(msg.data.peerId) : ''
   if (remotePeerId && remotePeerId !== getLocalPeerId() && state.localCallStream) {
     callPeer(remotePeerId)
   }
 }
 
-async function onIncomingCallSignal (msg, _roomKey) {
+async function onIncomingCallSignal (msg: ClientMessage, _roomKey: string) {
   if (!state.activeCall) return
-  const signal = msg.data?.signal || msg.signal
+  const signal = ((msg.data as Record<string, unknown> | undefined)?.signal || msg.signal) as Record<string, unknown> | undefined
   if (!signal) return
 
-  const from = signal.from
-  const to = signal.to
+  const from = String(signal.from || '')
+  const to = signal.to ? String(signal.to) : ''
   const localId = getLocalPeerId()
 
   // Only process signals addressed to us
@@ -556,15 +561,15 @@ async function onIncomingCallSignal (msg, _roomKey) {
   if (from === localId) return
 
   try {
-    switch (signal.type) {
+    switch (String(signal.type || '')) {
       case 'offer':
-        await handleOffer(from, signal.sdp)
+        await handleOffer(from, String(signal.sdp || ''))
         break
       case 'answer':
-        await handleAnswer(from, signal.sdp)
+        await handleAnswer(from, String(signal.sdp || ''))
         break
       case 'ice-candidate':
-        await handleIceCandidate(from, signal.candidate)
+        await handleIceCandidate(from, (signal.candidate || {}) as RTCIceCandidateInit)
         break
       default:
         console.warn('[WebRTC] Unknown signal type:', signal.type)
@@ -574,7 +579,7 @@ async function onIncomingCallSignal (msg, _roomKey) {
   }
 }
 
-function onIncomingCallEnd (msg, roomKey) {
+function onIncomingCallEnd (msg: ClientMessage, roomKey: string) {
   if (!state.activeRoom || state.activeRoom !== roomKey) return
   if (!state.activeCall) return
   if (!callMatchesActiveCallScope(msg?.data || {})) return
@@ -583,7 +588,7 @@ function onIncomingCallEnd (msg, roomKey) {
 
 /* ─── End call ─────────────────────────────────────────────────────── */
 
-async function endCall (notifyRemote) {
+async function endCall (notifyRemote: boolean) {
   if (!state.activeCall) return
 
   stopRingtoneLoop()
@@ -619,9 +624,9 @@ async function endCall (notifyRemote) {
   }
 
   state.localCallStream = null
-  state.activeCall = null
-  window.localStream = null
-  window.peer_stream = null
+  state.activeCall = null;
+  (window as any).localStream = null;
+  (window as any).peer_stream = null
   ensureAutoCallBitrateLoop?.()
   hideCallStage()
   if (typeof renderChannelLists === 'function') renderChannelLists()
@@ -640,7 +645,7 @@ function showInlineVoiceCallControls () {
   updateHeaderActionVisibility?.()
 }
 
-function showCallStage (mode) {
+function showCallStage (mode: string) {
   dom.callStage?.classList.remove('hidden')
   dom.btnEndCall?.classList.remove('hidden')
   dom.callStatus.textContent = mode[0].toUpperCase() + mode.slice(1) + ' call active'
@@ -673,7 +678,7 @@ function hideCallStage () {
   updateHeaderActionVisibility?.()
 }
 
-function attachLocalStream (stream) {
+function attachLocalStream (stream: MediaStream) {
   if (!dom.localVideo) return
   dom.localVideo.srcObject = stream
   dom.localVideo.classList.remove('hidden')

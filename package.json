@@ -3,21 +3,21 @@
   "version": "0.1.0",
   "description": "P2P CLI chat (text, files, voice-ready) built on Hyperswarm, Autobase & Corestore",
   "type": "module",
-  "main": "lib/quibble.js",
+  "main": "dist/lib/quibble.js",
   "bin": {
-    "quibble": "./bin/quibble.js"
+    "quibble": "./dist/bin/quibble.js"
   },
   "scripts": {
     "build:ts": "tsc -p tsconfig.json",
-    "start": "pnpm run build:ts && node bin/quibble.js",
-    "dev": "pnpm run build:ts && node ui/server.js",
-    "dev:dual": "pnpm run build:ts && node bin/dev-dual.js",
-    "dev:client-a": "pnpm run build:ts && PORT=3000 HOST=127.0.0.1 QUIBBLE_IDENTITY_DIR=.quibble-dev/client-a/identity QUIBBLE_UI_STORAGE=.quibble-dev/client-a/storage-ui node ui/server.js",
-    "dev:client-b": "pnpm run build:ts && PORT=3001 HOST=127.0.0.1 QUIBBLE_IDENTITY_DIR=.quibble-dev/client-b/identity QUIBBLE_UI_STORAGE=.quibble-dev/client-b/storage-ui node ui/server.js",
+    "start": "pnpm run build:ts && node dist/bin/quibble.js",
+    "dev": "pnpm run build:ts && node dist/ui/server.js",
+    "dev:dual": "pnpm run build:ts && node dist/bin/dev-dual.js",
+    "dev:client-a": "pnpm run build:ts && PORT=3000 HOST=127.0.0.1 QUIBBLE_IDENTITY_DIR=.quibble-dev/client-a/identity QUIBBLE_UI_STORAGE=.quibble-dev/client-a/storage-ui node dist/ui/server.js",
+    "dev:client-b": "pnpm run build:ts && PORT=3001 HOST=127.0.0.1 QUIBBLE_IDENTITY_DIR=.quibble-dev/client-b/identity QUIBBLE_UI_STORAGE=.quibble-dev/client-b/storage-ui node dist/ui/server.js",
     "build:css": "tailwindcss -c tailwind.config.cjs -i ./ui/public/styles.input.css -o ./ui/public/styles.css",
     "watch:css": "tailwindcss -c tailwind.config.cjs -i ./ui/public/styles.input.css -o ./ui/public/styles.css --watch",
-    "quibble": "pnpm run build:ts && node bin/quibble.js",
-    "test": "pnpm run build:ts && node test/local.js && node test/video-transfer.js"
+    "quibble": "pnpm run build:ts && node dist/bin/quibble.js",
+    "test": "pnpm run build:ts && node --test dist/test/*.test.js"
   },
   "keywords": [
     "p2p",

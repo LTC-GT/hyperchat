@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Video call helpers for Quibble.
  *
@@ -18,10 +17,10 @@
  * @param {Array|null} custom – optional list from QUIBBLE_ICE_SERVERS_JSON
  * @returns {Array}
  */
-export function buildIceServers (custom) {
+export function buildIceServers (custom: IceServer[] | null | undefined) {
   if (Array.isArray(custom) && custom.length > 0) return custom
   return [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.relay.metered.ca:80' },
     { urls: 'turn:global.relay.metered.ca:80', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
     { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },

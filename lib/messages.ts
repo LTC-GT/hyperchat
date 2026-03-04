@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Message types and encoding for quibble rooms.
  *
@@ -21,7 +20,7 @@ import b4a from 'b4a'
 const require = createRequire(import.meta.url)
 const crypto = require('hypercore-crypto')
 
-function resolveSenderStatus (identity) {
+function resolveSenderStatus (identity: Identity) {
   const status = String(identity?.status || 'online')
   return ['online', 'idle', 'dnd', 'invisible', 'offline'].includes(status) ? status : 'online'
 }
@@ -41,7 +40,7 @@ export function randomRoomIconEmoji () {
 
 // ─── Message constructors ───
 
-export function textMsg (text, identity) {
+export function textMsg (text: string, identity: Identity): TextMessage {
   return {
     type: 'text',
     id: msgId(),
@@ -54,7 +53,7 @@ export function textMsg (text, identity) {
   }
 }
 
-export function systemMsg (action, data, identity) {
+export function systemMsg (action: string, data: Record<string, unknown>, identity: Identity): SystemMessage {
   return {
     type: 'system',
     id: msgId(),
@@ -68,7 +67,7 @@ export function systemMsg (action, data, identity) {
   }
 }
 
-export function fileMsg (filename, size, mimeType, coreKey, identity, channelId = null) {
+export function fileMsg (filename: string, size: number, mimeType: string, coreKey: Buffer, identity: Identity, channelId: string | null = null): FileMessage {
   return {
     type: 'file',
     id: msgId(),
@@ -85,7 +84,7 @@ export function fileMsg (filename, size, mimeType, coreKey, identity, channelId 
   }
 }
 
-export function reactionMsg (targetId, emoji, identity) {
+export function reactionMsg (targetId: string, emoji: string, identity: Identity): ReactionMessage {
   return {
     type: 'reaction',
     id: msgId(),
@@ -99,7 +98,7 @@ export function reactionMsg (targetId, emoji, identity) {
   }
 }
 
-export function voiceMsg (action, sessionId, identity) {
+export function voiceMsg (action: string, sessionId: string, identity: Identity): VoiceMessage {
   return {
     type: 'voice',
     id: msgId(),
@@ -113,7 +112,7 @@ export function voiceMsg (action, sessionId, identity) {
   }
 }
 
-export function videoMsg (action, sessionId, identity) {
+export function videoMsg (action: string, sessionId: string, identity: Identity): VideoMessage {
   return {
     type: 'video',
     id: msgId(),
@@ -129,12 +128,12 @@ export function videoMsg (action, sessionId, identity) {
 
 // ─── Autobase addWriter message (handled specially in apply) ───
 
-export function addWriterMsg (writerKey, identity) {
+export function addWriterMsg (writerKey: Buffer | string, identity: Identity): SystemMessage {
   return {
     type: 'system',
     id: msgId(),
     action: 'add-writer',
-    data: { key: b4a.toString(writerKey, 'hex') },
+    data: { key: typeof writerKey === 'string' ? writerKey : b4a.toString(writerKey, 'hex') },
     sender: b4a.toString(identity.publicKey, 'hex'),
     senderName: identity.name,
     senderAvatar: identity.avatar || null,

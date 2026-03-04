@@ -1,4 +1,3 @@
-// @ts-nocheck
 (() => {
   const MOBILE_BREAKPOINT = 900
 
@@ -46,7 +45,7 @@
 
     backdrop?.addEventListener('click', closeDrawers)
 
-    dom.btnToggleMembers?.addEventListener('click', (event) => {
+    dom.btnToggleMembers?.addEventListener('click', (event: MouseEvent) => {
       if (!isMobileViewport()) return
       event.preventDefault()
       event.stopImmediatePropagation()

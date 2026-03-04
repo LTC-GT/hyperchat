@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Room – an Autobase-backed multi-writer chat room.
  *
@@ -14,9 +13,10 @@
  *   pear://quibble/<z32(base.key)>
  */
 
-// @ts-nocheck
 import { createRequire } from 'node:module'
 import { EventEmitter } from 'node:events'
+import type { Corestore as CorestoreType } from 'autobase'
+import type AutobaseType from 'autobase'
 import b4a from 'b4a'
 import z32 from 'z32'
 
@@ -32,21 +32,21 @@ const INVITE_EXTRA_BYTES = 96
 
 // ─── Autobase handlers ───
 
-function open (store) {
+function open (store: CorestoreType) {
   return store.get('view', { valueEncoding: 'json' })
 }
 
-async function apply (nodes, view, host) {
+async function apply (nodes: { value: unknown }[], view: { append(v: unknown): Promise<void> }, host: { addWriter(key: Buffer, opts?: { indexer?: boolean }): Promise<void> }) {
   for (const node of nodes) {
-    const msg = node.value
+    const msg = node.value as Record<string, unknown> | null
     if (!msg || !msg.type) {
       // Null ack nodes or malformed – skip
       continue
     }
 
-    if (msg.type === 'system' && msg.action === 'add-writer' && msg.data?.key) {
+    if (msg.type === 'system' && msg.action === 'add-writer' && (msg.data as Record<string, unknown>)?.key) {
       try {
-        await host.addWriter(b4a.from(msg.data.key, 'hex'), { indexer: true })
+        await host.addWriter(b4a.from(String((msg.data as Record<string, unknown>).key), 'hex'), { indexer: true })
       } catch {
         // Already a writer or invalid key – ignore
       }
@@ -60,14 +60,18 @@ async function apply (nodes, view, host) {
 // ─── Room class ───
 
 export class Room extends EventEmitter {
-  /**
-   * @param {import('corestore')} store – Corestore instance (caller manages lifecycle)
-   * @param {object} opts
-   * @param {Buffer|null}  opts.key        – Autobase bootstrap key (null = create new room)
-   * @param {Buffer|null}  opts.encryptionKey – Optional room-level encryption key
-   * @param {object}       opts.identity   – { publicKey, secretKey, name }
-   */
-  constructor (store, opts = {}) {
+  store: CorestoreType
+  identity: Identity | undefined
+  encryptionKey: Buffer | null
+  _bootstrapKey: Buffer | null
+  _namespace: string | null
+  base: AutobaseType | null
+  _messageKey: Buffer | null
+  _viewLen: number
+  _pollInterval: ReturnType<typeof setInterval> | null
+  _watchers: Set<(msg: RoomMessage, seq: number) => void>
+
+  constructor (store: CorestoreType, opts: RoomConstructorOpts = {}) {
     super()
     this.store = store
     this.identity = opts.identity
@@ -84,7 +88,7 @@ export class Room extends EventEmitter {
   // ─── Lifecycle ───
 
   async ready () {
-    const baseOpts = { open, apply, valueEncoding: 'json', ackInterval: 1000 }
+    const baseOpts: Record<string, unknown> = { open, apply, valueEncoding: 'json', ackInterval: 1000 }
 
     if (this.encryptionKey) {
       baseOpts.encryptionKey = this.encryptionKey
@@ -94,11 +98,12 @@ export class Room extends EventEmitter {
       ? this.store.namespace(this._namespace)
       : this.store.session()
 
-    this.base = new Autobase(baseStore, this._bootstrapKey, baseOpts)
-    await this.base.ready()
-    this._messageKey = deriveMessageKey(this.base.key)
+    const base = new Autobase(baseStore, this._bootstrapKey, baseOpts)
+    this.base = base
+    await base.ready()
+    this._messageKey = deriveMessageKey(base.key)
 
-    this._viewLen = this.base.view ? this.base.view.length : 0
+    this._viewLen = base.view ? base.view.length : 0
 
     // If we created the room, add ourselves as the first writer+indexer
     // (creator is the bootstrap).
@@ -107,8 +112,8 @@ export class Room extends EventEmitter {
     }
 
     this.emit('ready', {
-      key: this.base.key,
-      discoveryKey: this.base.discoveryKey,
+      key: base.key,
+      discoveryKey: base.discoveryKey,
       link: this.inviteLink
     })
 
@@ -127,10 +132,10 @@ export class Room extends EventEmitter {
 
   // ─── Messaging ───
 
-  async append (msg) {
+  async append (msg: RoomMessage) {
     if (!this.base) throw new Error('Room not ready')
     const payload = shouldEncryptMessage(msg)
-      ? encryptMessage(msg, this._messageKey)
+      ? encryptMessage(msg, this._messageKey!)
       : msg
 
     await this.base.append(payload)
@@ -149,12 +154,12 @@ export class Room extends EventEmitter {
    * Fetch a page of messages with sequence metadata.
    * `beforeSeq` is an exclusive upper bound over view indices.
    */
-  async historyPage ({ limit = 100, beforeSeq = null } = {}) {
+  async historyPage ({ limit = 100, beforeSeq }: { limit?: number; beforeSeq?: number | null } = {}) {
     if (!this.base?.view) return { messages: [], total: 0, nextBeforeSeq: null }
 
     await this.base.update()
     const total = this.base.view.length
-    const end = Number.isInteger(beforeSeq)
+    const end = typeof beforeSeq === 'number'
       ? Math.max(0, Math.min(beforeSeq, total))
       : total
     const start = Math.max(0, end - Math.max(1, Number(limit) || 100))
@@ -173,7 +178,7 @@ export class Room extends EventEmitter {
   /**
    * Stream new messages as they arrive.  Returns a cleanup function.
    */
-  watch (cb) {
+  watch (cb: (msg: RoomMessage, seq: number) => void) {
     this._watchers.add(cb)
     this._ensureWatchPump()
 
@@ -191,7 +196,7 @@ export class Room extends EventEmitter {
 
     const poll = async () => {
       try {
-        await this.base.update()
+        await this.base!.update()
       } catch {
         return
       }
@@ -231,15 +236,15 @@ export class Room extends EventEmitter {
    * Add a remote peer as a writer+indexer.
    * We append an add-writer system message which will be processed by `apply`.
    */
-  async addWriter (writerKey) {
+  async addWriter (writerKey: Buffer | string) {
     const { addWriterMsg } = await import('./messages.js')
-    const msg = addWriterMsg(writerKey, this.identity)
+    const msg = addWriterMsg(writerKey, this.identity!)
     await this.append(msg)
   }
 
   // ─── Replication (called by Quibble on each swarm connection) ───
 
-  replicate (socket) {
+  replicate (socket: unknown) {
     this.store.replicate(socket)
   }
 
@@ -258,7 +263,7 @@ export class Room extends EventEmitter {
 /**
  * Parse a pear://quibble/... link into a room key buffer.
  */
-export function parseLink (link) {
+export function parseLink (link: string) {
   if (!link.startsWith(QUIBBLE_PREFIX)) {
     throw new Error(`Invalid quibble link (expected ${QUIBBLE_PREFIX}…)`)
   }
@@ -273,18 +278,18 @@ export function parseLink (link) {
 /**
  * Create a quibble invite link from a key buffer.
  */
-export function createLink (key) {
+export function createLink (key: Buffer) {
   const payload = b4a.concat([key, deriveInvitePadding(key)])
   return QUIBBLE_PREFIX + z32.encode(payload)
 }
 
-function deriveInvitePadding (key) {
+function deriveInvitePadding (key: Buffer) {
   const out = b4a.alloc(INVITE_EXTRA_BYTES)
   const seed = b4a.concat([b4a.from('quibble-invite-v2'), key])
 
   for (let i = 0; i < INVITE_EXTRA_BYTES / INVITE_KEY_BYTES; i++) {
     const block = b4a.alloc(INVITE_KEY_BYTES)
-    const input = b4a.concat([seed, b4a.from([i])])
+    const input = b4a.concat([seed, Buffer.from([i])])
     sodium.crypto_generichash(block, input)
     block.copy(out, i * INVITE_KEY_BYTES)
   }
@@ -292,11 +297,11 @@ function deriveInvitePadding (key) {
   return out
 }
 
-function shouldEncryptMessage (msg) {
+function shouldEncryptMessage (msg: RoomMessage | { type: string; action?: string }) {
   return !(msg?.type === 'system' && msg?.action === 'add-writer')
 }
 
-function deriveMessageKey (roomKey) {
+function deriveMessageKey (roomKey: Buffer) {
   const key = b4a.allocUnsafe(sodium.crypto_secretbox_KEYBYTES)
   const ctx = b4a.from('quibble-room-msg-v1')
   const material = b4a.concat([ctx, roomKey])
@@ -304,7 +309,7 @@ function deriveMessageKey (roomKey) {
   return key
 }
 
-function encryptMessage (msg, key) {
+function encryptMessage (msg: RoomMessage, key: Buffer) {
   const nonce = b4a.allocUnsafe(sodium.crypto_secretbox_NONCEBYTES)
   sodium.randombytes_buf(nonce)
 
@@ -320,13 +325,14 @@ function encryptMessage (msg, key) {
   }
 }
 
-function decodeMessage (node, key) {
+function decodeMessage (node: unknown, key: Buffer | null) {
   if (!node) return null
-  if (node.type !== 'encrypted') return node
+  const msg = node as Record<string, unknown>
+  if (msg.type !== 'encrypted') return msg
 
   try {
-    const nonce = b4a.from(node.nonce, 'hex')
-    const cipher = b4a.from(node.ciphertext, 'hex')
+    const nonce = b4a.from(msg.nonce as string, 'hex')
+    const cipher = b4a.from(msg.ciphertext as string, 'hex')
     const out = b4a.allocUnsafe(Math.max(0, cipher.length - sodium.crypto_secretbox_MACBYTES))
     const ok = sodium.crypto_secretbox_open_easy(out, cipher, nonce, key)
     if (!ok) return null

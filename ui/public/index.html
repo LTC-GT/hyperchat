@@ -14,11 +14,22 @@
 
   <div id="connectionGate" class="fixed inset-0 z-[90] flex items-center justify-center bg-quibble-overlay">
     <div class="bg-quibble-modal border border-quibble-divider rounded-xl px-8 py-7 w-full max-w-sm text-center shadow-2xl">
-      <div class="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-quibble-active border-t-quibble-blurple animate-spin"></div>
+      <div class="mx-auto mb-4 h-10 w-10 flex items-center justify-center">
+        <div id="connectionGateIconSpinner" class="h-10 w-10 rounded-full border-4 border-quibble-active border-t-quibble-blurple animate-spin"></div>
+        <svg id="connectionGateIconSuccess" class="hidden h-10 w-10 text-quibble-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
       <h2 class="text-xl font-semibold mb-1" id="connectionGateTitle">Connecting…</h2>
       <p class="text-sm text-quibble-text-s" id="connectionGateDetail">Waiting for DAT/DHT peers and room sync</p>
-      <div class="mt-4 h-1.5 bg-quibble-serverbar rounded-full overflow-hidden">
-        <div class="h-full w-1/2 bg-quibble-blurple animate-pulse"></div>
+      <div id="connectionGateProgressFill" class="connection-gate-route mt-4 text-quibble-blurple" aria-hidden="true">
+        <span class="connection-gate-end text-quibble-text-m">Browser</span>
+        <div class="connection-gate-track bg-quibble-serverbar">
+          <span class="connection-gate-packet"></span>
+          <span class="connection-gate-packet"></span>
+          <span class="connection-gate-packet"></span>
+        </div>
+        <span class="connection-gate-end text-quibble-text-m">Service</span>
       </div>
     </div>
   </div>
@@ -245,6 +256,10 @@
                 <span id="friendRequestCount" class="text-xs text-quibble-text-m">0</span>
               </div>
               <div id="friendRequestList" class="space-y-2 text-sm"></div>
+              <div class="mt-2 flex gap-1.5">
+                <button id="btnCopyFriendLink" class="flex-1 text-[11px] px-2 py-1 rounded bg-quibble-blurple/20 text-quibble-blurple hover:bg-quibble-blurple/30 transition-colors" title="Copy your friend link to clipboard">Copy My Friend Link</button>
+                <button id="btnPasteFriendLink" class="flex-1 text-[11px] px-2 py-1 rounded bg-quibble-green/20 text-quibble-green hover:bg-quibble-green/30 transition-colors" title="Add a friend from a shared link">Paste Friend Link</button>
+              </div>
             </div>
 
             <div class="mt-3 bg-quibble-serverbar rounded p-3">
@@ -355,6 +370,8 @@
           <div id="securityTooltip" class="hidden absolute top-8 left-0 w-72 bg-quibble-serverbar border border-quibble-divider rounded-md p-3 text-xs text-quibble-text-s shadow-xl z-40 group-hover:block">
             <p class="text-quibble-text font-semibold mb-2">System Status</p>
             <p>Peers on swarm: <span id="securityPeers">0</span></p>
+            <p>Swarm connections: <span id="securitySwarmConns">0</span></p>
+            <p>Active writers: <span id="securityWriters">–</span></p>
             <p>Known members: <span id="securityKnownMembers">0</span></p>
             <p>Connection: <span id="securityConn">Offline</span></p>
             <p>Transport: P2P Hyperswarm</p>
@@ -767,11 +784,10 @@
 
             <label class="text-xs uppercase tracking-wide text-quibble-text-m mt-2">STUN Server</label>
             <select id="settingsStunPreset" class="w-full bg-quibble-serverbar rounded px-3 py-2 text-sm focus:outline-none">
+              <option value="cloudflare">Cloudflare (stun.cloudflare.com)</option>
               <option value="google">Google (stun.l.google.com)</option>
               <option value="metered">Metered (stun.relay.metered.ca)</option>
               <option value="twilio">Twilio (global.stun.twilio.com)</option>
-              <option value="cloudflare">Cloudflare (stun.cloudflare.com)</option>
-              <option value="mozilla">Mozilla (stun.services.mozilla.com)</option>
               <option value="custom">Custom…</option>
             </select>
             <div id="settingsCustomStunWrap" class="hidden">

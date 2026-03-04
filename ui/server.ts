@@ -1,7 +1,6 @@
-// @ts-nocheck
 import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
-import { WebSocketServer } from 'ws'
+import { WebSocketServer, type WebSocket } from 'ws'
 import { readFileSync, existsSync, writeFileSync, statSync, unlinkSync, rmSync } from 'node:fs'
 import { join, extname, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,8 +9,18 @@ import b4a from 'b4a'
 
 import { loadIdentity, setName, getSeedPhrase, importSeedPhrase } from '../lib/identity.js'
 import { Quibble } from '../lib/quibble.js'
-import { textMsg, systemMsg, randomRoomIconEmoji } from '../lib/messages.js'
+import { textMsg, systemMsg, randomRoomIconEmoji, ROOM_ICON_EMOJIS } from '../lib/messages.js'
+
+// Deterministic emoji based on room key hash (stable across sessions)
+function deterministicRoomEmoji (roomKeyHex: string) {
+  let hash = 0
+  for (let i = 0; i < roomKeyHex.length; i++) {
+    hash = (hash * 31 + roomKeyHex.charCodeAt(i)) >>> 0
+  }
+  return ROOM_ICON_EMOJIS[hash % ROOM_ICON_EMOJIS.length]
+}
 import { sendFile } from '../lib/file-transfer.js'
+import type { Room } from '../lib/room.js'
 import { createProfileStore } from './server-profile.js'
 import {
   getRoomOwner,
@@ -25,12 +34,14 @@ import {
 } from './server-room-helpers.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const PUBLIC = join(__dirname, 'public')
+const PROJECT_ROOT = join(__dirname, '..', '..')
+const PUBLIC_COMPILED = join(__dirname, 'public')
+const PUBLIC_STATIC = join(PROJECT_ROOT, 'ui', 'public')
 const DEFAULT_PORT = Number(process.env.PORT || 3000)
 const LISTEN_HOST = process.env.HOST || '0.0.0.0'
 const IDENTITY_DIR = process.env.QUIBBLE_IDENTITY_DIR ? String(process.env.QUIBBLE_IDENTITY_DIR) : undefined
 
-const MIME = {
+const MIME: Record<string, string> = {
   '.html': 'text/html',
   '.js': 'application/javascript',
   '.css': 'text/css',
@@ -54,14 +65,14 @@ function parseIceServersFromEnv () {
     if (!Array.isArray(parsed)) return null
 
     const clean = parsed
-      .map((entry) => {
+      .map((entry: Record<string, unknown>) => {
         if (!entry || typeof entry !== 'object') return null
         const urls = Array.isArray(entry.urls)
-          ? entry.urls.map((url) => String(url || '').trim()).filter(Boolean)
+          ? (entry.urls as unknown[]).map((url: unknown) => String(url || '').trim()).filter(Boolean)
           : (String(entry.urls || '').trim() ? [String(entry.urls || '').trim()] : [])
         if (urls.length === 0) return null
 
-        const normalized = { urls }
+        const normalized: IceServer = { urls }
         if (entry.username !== undefined) normalized.username = String(entry.username)
         if (entry.credential !== undefined) normalized.credential = String(entry.credential)
         return normalized
@@ -76,12 +87,7 @@ function parseIceServersFromEnv () {
 
 function getDefaultIceServers () {
   return [
-    {
-      urls: [
-        'stun:stun.l.google.com:19302',
-        'stun:stun1.l.google.com:19302'
-      ]
-    },
+    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.relay.metered.ca:80' },
     { urls: 'turn:global.relay.metered.ca:80', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
     { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'e8dd65b92c81bce34e5765b8', credential: 'kMQuBG7UrDaAx3uv' },
@@ -96,7 +102,7 @@ function resolveIceServers () {
 
 const rtcIceServers = resolveIceServers()
 
-function getLanUrls (port) {
+function getLanUrls (port: number) {
   const urls = []
   const interfaces = os.networkInterfaces()
   for (const entries of Object.values(interfaces)) {
@@ -117,21 +123,21 @@ function scheduleAppShutdown ({ wipeLocal = false } = {}) {
     try {
       await quibble.destroy()
     } catch (err) {
-      console.error('Failed destroying Quibble during reset:', err.message)
+      console.error('Failed destroying Quibble during reset:', (err as Error).message)
     }
 
     try { wss.close() } catch {}
     try { httpServer.close() } catch {}
 
     if (wipeLocal) {
-      const resetPaths = new Set([identity.dir])
-      if (storageDir && !storageDir.startsWith(identity.dir)) resetPaths.add(storageDir)
+      const resetPaths = new Set([identity.dir!])
+      if (storageDir && !storageDir.startsWith(identity.dir!)) resetPaths.add(storageDir)
 
       for (const target of resetPaths) {
         try {
           rmSync(target, { recursive: true, force: true })
         } catch (err) {
-          console.error(`Failed deleting ${target}:`, err.message)
+          console.error(`Failed deleting ${target}:`, (err as Error).message)
         }
       }
     }
@@ -162,18 +168,27 @@ const httpServer = createServer((req, res) => {
 
 
 
-  let filePath = join(PUBLIC, req.url === '/' ? 'index.html' : req.url)
+  const urlPath = req.url ?? '/'
+  let filePath = join(PUBLIC_COMPILED, urlPath === '/' ? 'index.html' : urlPath)
 
-  // Security: don't escape PUBLIC
-  if (!filePath.startsWith(PUBLIC)) {
+  // Security: don't escape the public roots
+  const inCompiled = filePath.startsWith(PUBLIC_COMPILED)
+  const inStatic = join(PUBLIC_STATIC, urlPath === '/' ? 'index.html' : urlPath).startsWith(PUBLIC_STATIC)
+  if (!inCompiled && !inStatic) {
     res.writeHead(403)
     res.end('Forbidden')
     return
   }
 
   try {
+    // Try compiled output first (JS from tsc), fall back to source static assets (HTML, CSS, images)
     if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
-      filePath = join(PUBLIC, 'index.html')
+      const staticPath = join(PUBLIC_STATIC, urlPath === '/' ? 'index.html' : urlPath)
+      if (existsSync(staticPath) && !statSync(staticPath).isDirectory()) {
+        filePath = staticPath
+      } else {
+        filePath = join(PUBLIC_STATIC, 'index.html')
+      }
     }
     const data = readFileSync(filePath)
     const ext = extname(filePath)
@@ -185,12 +200,35 @@ const httpServer = createServer((req, res) => {
   }
 })
 
-// ─── P2P Node ───
-const identity = await loadIdentity({ dir: IDENTITY_DIR })
-const { quibble, storageDir } = await initQuibble(identity)
+// ─── Early HTTP + WebSocket listen ───
+// Start accepting connections immediately so the browser doesn't spin on
+// retries while the P2P node is still warming up.
+const listenPort = await findOpenPort(DEFAULT_PORT)
+if (listenPort !== DEFAULT_PORT) {
+  console.warn(`⚠️  Port ${DEFAULT_PORT} is in use, using ${listenPort} instead.`)
+}
+const wss = new WebSocketServer({ server: httpServer })
+wss.on('error', (err) => {
+  console.error('WebSocket server error:', err.message)
+})
+await new Promise<void>(resolve => httpServer.listen(listenPort, LISTEN_HOST, resolve))
+console.log(`\n  🚀 Quibble Web UI running at http://localhost:${listenPort}`)
+const lanUrls = getLanUrls(listenPort)
+for (const url of lanUrls) console.log(`  📱 LAN: ${url}`)
+console.log('')
 
-async function initQuibble (identity) {
-  const preferredStorage = process.env.QUIBBLE_UI_STORAGE || join(identity.dir, 'storage-ui')
+// Gate that resolves once the P2P node + persisted rooms are ready.
+let _resolveP2PReady: () => void
+const p2pReady: Promise<void> = new Promise(resolve => { _resolveP2PReady = resolve })
+
+// ─── P2P Node ───
+let identity = await loadIdentity({ dir: IDENTITY_DIR })
+let storageDir: string
+const { quibble, storageDir: _storageDir } = await initQuibble(identity)
+storageDir = _storageDir
+
+async function initQuibble (identity: Identity) {
+  const preferredStorage = process.env.QUIBBLE_UI_STORAGE || join(identity.dir!, 'storage-ui')
 
   const maxAttempts = 8
   const retryDelayMs = 500
@@ -201,7 +239,7 @@ async function initQuibble (identity) {
       await quibble.ready()
       return { quibble, storageDir: preferredStorage }
     } catch (err) {
-      const message = String(err?.message || '')
+      const message = String((err as Error)?.message || '')
       const lockBusy = message.includes('File descriptor could not be locked')
       if (!lockBusy) throw err
 
@@ -217,7 +255,7 @@ async function initQuibble (identity) {
         'Close the other process (or wait for it to fully exit) and run pnpm dev again.',
         'To use a different persistent storage path, set QUIBBLE_UI_STORAGE=/path/to/storage pnpm dev.'
       ].join(' '))
-      console.error('Failed destroying Quibble during reset:', err.message)
+      console.error('Failed destroying Quibble during reset:', (err as Error).message)
     }
   }
 
@@ -225,21 +263,21 @@ async function initQuibble (identity) {
 }
 
 // Track watchers for cleanup
-const roomWatchers = new Map() // roomKeyHex -> Set<{ ws, unsub }>
-const activeCallsByScope = new Map() // `${roomKey}|${scope}|${channelId}|${dmKey}` -> { callId, startedBy, startedAt }
+const roomWatchers = new Map<string, Set<{ ws: WebSocket | null; unsub: (() => void) | null }>>() // roomKeyHex -> Set<{ ws, unsub }>
+const activeCallsByScope = new Map<string, { callId: string; startedBy: string; startedAt: number }>() // `${roomKey}|${scope}|${channelId}|${dmKey}` -> { callId, startedBy, startedAt }
 
 // ─── Profile persistence (avatar, name stored alongside identity) ───
 const { profilePath, loadProfile, saveProfile } = createProfileStore(identity)
-const roomsPath = join(identity.dir, 'rooms.json')
+const roomsPath = join(identity.dir!, 'rooms.json')
 
-function normalizePresenceStatus (value) {
+function normalizePresenceStatus (value: unknown) {
   const status = String(value || 'active').toLowerCase()
   if (status === 'active' || status === 'away') return status
   if (status === 'online') return 'active'
   return 'away'
 }
 
-function buildCallScopeKey (roomKey, scope, channelId, dmKey) {
+function buildCallScopeKey (roomKey: string, scope: string | null | undefined, channelId: string | null | undefined, dmKey: string | null | undefined) {
   const roomPart = String(roomKey || '')
   const dmPart = dmKey ? String(dmKey) : ''
   const normalizedScope = String(scope || (dmPart ? 'dm' : 'text'))
@@ -247,17 +285,17 @@ function buildCallScopeKey (roomKey, scope, channelId, dmKey) {
   return `${roomPart}|${normalizedScope}|${normalizedChannel}|${dmPart}`
 }
 
-function setActiveCall (roomKey, scope, channelId, dmKey, payload) {
+function setActiveCall (roomKey: string, scope: string | null | undefined, channelId: string | null | undefined, dmKey: string | null | undefined, payload: { callId: string; startedBy: string; startedAt: number }) {
   const key = buildCallScopeKey(roomKey, scope, channelId, dmKey)
   activeCallsByScope.set(key, payload)
 }
 
-function getActiveCall (roomKey, scope, channelId, dmKey) {
+function getActiveCall (roomKey: string, scope: string | null | undefined, channelId: string | null | undefined, dmKey: string | null | undefined) {
   const key = buildCallScopeKey(roomKey, scope, channelId, dmKey)
   return activeCallsByScope.get(key) || null
 }
 
-function clearActiveCallByRoomCallId (roomKey, callId) {
+function clearActiveCallByRoomCallId (roomKey: string, callId: string) {
   const roomPart = String(roomKey || '')
   const id = String(callId || '')
   if (!roomPart || !id) return
@@ -269,7 +307,7 @@ function clearActiveCallByRoomCallId (roomKey, callId) {
   }
 }
 
-function clearActiveCallsForRoom (roomKey) {
+function clearActiveCallsForRoom (roomKey: string) {
   const roomPart = String(roomKey || '')
   if (!roomPart) return
 
@@ -284,20 +322,20 @@ function loadPersistedRooms () {
     const parsed = JSON.parse(readFileSync(roomsPath, 'utf-8'))
     const rooms = Array.isArray(parsed?.rooms) ? parsed.rooms : []
     return rooms
-      .map((entry) => ({
+      .map((entry: Record<string, unknown>) => ({
         roomKey: String(entry?.roomKey || '').trim(),
         link: String(entry?.link || '').trim(),
         addedAt: Number(entry?.addedAt) || Date.now()
       }))
-      .filter((entry) => entry.roomKey && entry.link)
+      .filter((entry: { roomKey: string; link: string }) => entry.roomKey && entry.link)
   } catch {
     return []
   }
 }
 
-function savePersistedRooms (rooms) {
-  const clean = []
-  const seen = new Set()
+function savePersistedRooms (rooms: { roomKey?: string; link?: string; addedAt?: number }[]) {
+  const clean: { roomKey: string; link: string; addedAt: number }[] = []
+  const seen = new Set<string>()
   for (const entry of rooms) {
     const roomKey = String(entry?.roomKey || '').trim()
     const link = String(entry?.link || '').trim()
@@ -311,13 +349,13 @@ function savePersistedRooms (rooms) {
   writeFileSync(roomsPath, JSON.stringify({ rooms: clean }, null, 2))
 }
 
-function persistRoom (roomKey, link) {
+function persistRoom (roomKey: string, link: string) {
   const key = String(roomKey || '').trim()
   const invite = String(link || '').trim()
   if (!key || !invite) return
 
   const rooms = loadPersistedRooms()
-  const idx = rooms.findIndex((entry) => entry.roomKey === key || entry.link === invite)
+  const idx = rooms.findIndex((entry: { roomKey: string; link: string }) => entry.roomKey === key || entry.link === invite)
   if (idx >= 0) {
     rooms[idx] = { ...rooms[idx], roomKey: key, link: invite, addedAt: rooms[idx].addedAt || Date.now() }
   } else {
@@ -326,12 +364,12 @@ function persistRoom (roomKey, link) {
   savePersistedRooms(rooms)
 }
 
-function unpersistRoom (roomKey, link = null) {
+function unpersistRoom (roomKey: string, link: string | null = null) {
   const key = String(roomKey || '').trim()
   const invite = String(link || '').trim()
   if (!key && !invite) return
 
-  const rooms = loadPersistedRooms().filter((entry) => {
+  const rooms = loadPersistedRooms().filter((entry: { roomKey: string; link: string }) => {
     if (key && entry.roomKey === key) return false
     if (invite && entry.link === invite) return false
     return true
@@ -346,11 +384,11 @@ async function restorePersistedRooms () {
   const restored = []
   for (const entry of persisted) {
     try {
-      const room = await quibble.joinRoom(entry.link)
-      const roomKey = b4a.toString(room.key, 'hex')
-      restored.push({ roomKey, link: room.inviteLink, addedAt: entry.addedAt || Date.now() })
+      const room = (await quibble.joinRoom(entry.link))!
+      const roomKey = b4a.toString(room.key!, 'hex')
+      restored.push({ roomKey, link: room.inviteLink!, addedAt: entry.addedAt || Date.now() })
     } catch (err) {
-      console.warn(`Skipping persisted room ${entry.roomKey}: ${err.message}`)
+      console.warn(`Skipping persisted room ${entry.roomKey}: ${(err as Error).message}`)
     }
   }
 
@@ -359,13 +397,16 @@ async function restorePersistedRooms () {
 
 await restorePersistedRooms()
 
-// ─── WebSocket server ───
-const wss = new WebSocketServer({ server: httpServer })
-wss.on('error', (err) => {
-  console.error('WebSocket server error:', err.message)
-})
+// Signal that the P2P layer is fully ready.
+_resolveP2PReady!()
+console.log(`  Identity: ${identity.name} (${b4a.toString(identity.publicKey!, 'hex').slice(0, 16)}…)`)
+console.log(`  Storage:  ${storageDir}\n`)
 
-wss.on('connection', (ws) => {
+// ─── WebSocket connection handler ───
+wss.on('connection', async (ws) => {
+  // Wait for P2P node + rooms before sending any data to the client.
+  await p2pReady
+  if (ws.readyState !== ws.OPEN) return // client may have disconnected while waiting
   let profile = loadProfile()
   if (!existsSync(profilePath)) {
     profile = saveProfile(profile)
@@ -441,7 +482,7 @@ wss.on('connection', (ws) => {
                 seedPhrase: phrase
               }))
             } catch (err) {
-              console.warn('Failed sending seed phrase backup payload:', err.message)
+              console.warn('Failed sending seed phrase backup payload:', (err as Error).message)
             }
           }
           break
@@ -460,18 +501,19 @@ wss.on('connection', (ws) => {
               const presenceMsg = systemMsg('presence-set', { status: nextStatus, at: activityAt }, identity)
               await room.append(presenceMsg)
             } catch (err) {
-              console.warn(`Failed broadcasting presence to room ${roomKey}:`, err.message)
+              console.warn(`Failed broadcasting presence to room ${roomKey}:`, (err as Error).message)
             }
           }
           break
         }
 
         case 'create-room': {
-          const room = await quibble.createRoom()
-          const keyHex = b4a.toString(room.key, 'hex')
-          persistRoom(keyHex, room.inviteLink)
+          const room = (await quibble.createRoom())!
+          const keyHex = b4a.toString(room.key!, 'hex')
+          persistRoom(keyHex, room.inviteLink!)
 
-          const emoji = String(msg.emoji || '').trim() || randomRoomIconEmoji()
+          // Use deterministic emoji from room key hash when none specified
+          const emoji = String(msg.emoji || '').trim() || deterministicRoomEmoji(keyHex)
           const imageData = typeof msg.imageData === 'string' && msg.imageData.startsWith('data:image/')
             ? msg.imageData.slice(0, 2_000_000)
             : null
@@ -569,14 +611,14 @@ wss.on('connection', (ws) => {
         }
 
         case 'join-room': {
-          const room = await quibble.joinRoom(msg.link)
-          const keyHex = b4a.toString(room.key, 'hex')
-          persistRoom(keyHex, room.inviteLink)
+          const room = (await quibble.joinRoom(msg.link))!
+          const keyHex = b4a.toString(room.key!, 'hex')
+          persistRoom(keyHex, room.inviteLink!)
 
           ws.send(JSON.stringify({
             type: 'room-joined',
             roomKey: keyHex,
-            link: room.inviteLink,
+            link: room.inviteLink!,
             writable: room.writable
           }))
 
@@ -614,12 +656,11 @@ wss.on('connection', (ws) => {
             break
           }
 
-          const chatMsg = textMsg(msg.text, identity)
-          chatMsg.channelId = channelId
+          const chatMsg: TextMessage & { channelId?: string; threadRootId?: string; dmKey?: string; dmParticipants?: string[] } = { ...textMsg(msg.text, identity), channelId }
           if (msg.threadRootId) chatMsg.threadRootId = String(msg.threadRootId)
           if (msg.dmKey) chatMsg.dmKey = String(msg.dmKey)
           if (msg.dmParticipants && Array.isArray(msg.dmParticipants)) {
-            chatMsg.dmParticipants = msg.dmParticipants.map((v) => String(v)).filter(Boolean)
+            chatMsg.dmParticipants = msg.dmParticipants.map((v: unknown) => String(v)).filter(Boolean)
           }
           await room.append(chatMsg)
           break
@@ -645,12 +686,13 @@ wss.on('connection', (ws) => {
             break
           }
 
+          const targetRecord = target as unknown as Record<string, unknown>
           const editEvent = systemMsg('message-edit', {
             messageId: String(msg.messageId),
             text: nextText,
-            channelId: String(target.channelId || 'general'),
-            dmKey: target.dmKey ? String(target.dmKey) : null,
-            threadRootId: target.threadRootId ? String(target.threadRootId) : null
+            channelId: String(targetRecord.channelId || 'general'),
+            dmKey: targetRecord.dmKey ? String(targetRecord.dmKey) : null,
+            threadRootId: targetRecord.threadRootId ? String(targetRecord.threadRootId) : null
           }, identity)
           await room.append(editEvent)
           break
@@ -670,12 +712,13 @@ wss.on('connection', (ws) => {
           }
 
           const senderHex = b4a.toString(identity.publicKey, 'hex')
-          const channelId = String(target.channelId || 'general')
-          const dmKey = target.dmKey ? String(target.dmKey) : null
+          const targetRecord = target as unknown as Record<string, unknown>
+          const channelId = String(targetRecord.channelId || 'general')
+          const dmKey = targetRecord.dmKey ? String(targetRecord.dmKey) : null
 
           if (dmKey) {
-            const participants = new Set((Array.isArray(target.dmParticipants) ? target.dmParticipants : [])
-              .map((value) => String(value))
+            const participants = new Set((Array.isArray(targetRecord.dmParticipants) ? (targetRecord.dmParticipants as unknown[]) : [])
+              .map((value: unknown) => String(value))
               .filter(Boolean))
             if (target.sender) participants.add(String(target.sender))
             if (participants.size === 0 && dmKey.includes(':')) {
@@ -714,7 +757,7 @@ wss.on('connection', (ws) => {
             on: !active,
             channelId,
             dmKey,
-            threadRootId: target.threadRootId ? String(target.threadRootId) : null
+            threadRootId: targetRecord.threadRootId ? String(targetRecord.threadRootId) : null
           }, identity)
 
           await room.append(reactionEvent)
@@ -780,9 +823,9 @@ wss.on('connection', (ws) => {
           try {
             await sendFile(tempPath, quibble.store, room, identity, {
               channelId,
-              threadRootId: msg.threadRootId ? String(msg.threadRootId) : null,
-              dmKey: msg.dmKey ? String(msg.dmKey) : null,
-              dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null
+              threadRootId: msg.threadRootId ? String(msg.threadRootId) : undefined,
+              dmKey: msg.dmKey ? String(msg.dmKey) : undefined,
+              dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v: unknown) => String(v)).filter(Boolean) : undefined
             })
           } finally {
             try { unlinkSync(tempPath) } catch {}
@@ -966,9 +1009,9 @@ wss.on('connection', (ws) => {
           await core.ready()
           if (core.length === 0) await core.update({ wait: true })
 
-          const chunks = []
+          const chunks: (Buffer | Uint8Array)[] = []
           for (let i = 0; i < core.length; i++) {
-            chunks.push(await core.get(i))
+            chunks.push(await core.get(i) as Buffer)
           }
           const buf = b4a.concat(chunks)
 
@@ -1035,14 +1078,15 @@ wss.on('connection', (ws) => {
           const currentAdmins = await getRoomAdmins(room)
           const requesterIsOwner = ownerHex && requesterHex === ownerHex
 
-          let cleanAdmins = [...new Set(msg.admins.map((v) => String(v).trim()).filter(Boolean))]
+          let cleanAdmins: string[] | null = [...new Set(msg.admins.map((v: unknown) => String(v).trim()).filter(Boolean) as string[])]
           if (cleanAdmins.length === 0) break
 
-          cleanAdmins = [...new Set([...cleanAdmins, ownerHex].filter(Boolean))]
+          cleanAdmins = [...new Set([...cleanAdmins, ownerHex].filter((v): v is string => typeof v === 'string' && v.length > 0))]
 
           if (!requesterIsOwner) {
             for (const admin of currentAdmins) {
-              if (!cleanAdmins.includes(admin)) {
+              const adminKey = String(admin)
+              if (!cleanAdmins!.includes(adminKey)) {
                 ws.send(JSON.stringify({ type: 'error', message: 'Only the owner can remove existing admins.' }))
                 cleanAdmins = null
                 break
@@ -1134,7 +1178,7 @@ wss.on('connection', (ws) => {
             scope,
             channelId,
             dmKey,
-            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null,
+            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v: unknown) => String(v)).filter(Boolean) : null,
             peerId: msg.peerId || null
           }, identity)
           await room.append(startMsg)
@@ -1173,7 +1217,7 @@ wss.on('connection', (ws) => {
             scope,
             channelId,
             dmKey,
-            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v) => String(v)).filter(Boolean) : null,
+            dmParticipants: Array.isArray(msg.dmParticipants) ? msg.dmParticipants.map((v: unknown) => String(v)).filter(Boolean) : null,
             peerId: msg.peerId || null
           }, identity)
           await room.append(joinMsg)
@@ -1251,7 +1295,7 @@ wss.on('connection', (ws) => {
               const leaveMsg = systemMsg('leave', { name: identity.name }, identity)
               await room.append(leaveMsg)
             } catch {}
-            unpersistRoom(msg.roomKey, room.inviteLink)
+            unpersistRoom(msg.roomKey, room.inviteLink ?? null)
           } else {
             unpersistRoom(msg.roomKey)
           }
@@ -1278,15 +1322,29 @@ wss.on('connection', (ws) => {
         }
 
         case 'import-seed-phrase': {
-          const phrase = String(msg.seedPhrase || '')
-          await importSeedPhrase(phrase, { dir: identity.dir, name: identity.name || 'anon' })
-          ws.send(JSON.stringify({ type: 'seed-phrase-imported' }))
+          const phrase = String(msg.seedPhrase || '').trim()
+          if (!phrase) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Empty seed phrase.' }))
+            break
+          }
+          const words = phrase.split(/\s+/)
+          if (words.length !== 24) {
+            ws.send(JSON.stringify({ type: 'error', message: `Seed phrase must be exactly 24 words (got ${words.length}).` }))
+            break
+          }
+          try {
+            const result = await importSeedPhrase(phrase, { dir: identity.dir, name: identity.name || 'anon' })
+            ws.send(JSON.stringify({ type: 'seed-phrase-imported', publicKey: ('publicKey' in result ? result.publicKey : null) || null }))
+          } catch (err) {
+            ws.send(JSON.stringify({ type: 'error', message: `Seed phrase import failed: ${(err as Error).message}` }))
+            break
+          }
           scheduleIdentityReload()
           break
         }
       }
     } catch (err) {
-      const rawMessage = String(err?.message || 'Server error')
+      const rawMessage = String((err as Error)?.message || 'Server error')
       if (rawMessage === 'Not writable') {
         const roomKey = msg?.roomKey ? String(msg.roomKey) : null
         const room = roomKey ? quibble.rooms.get(roomKey) : null
@@ -1312,7 +1370,7 @@ wss.on('connection', (ws) => {
     for (const [keyHex, watchers] of roomWatchers) {
       for (const w of watchers) {
         if (w.ws === ws) {
-          w.unsub()
+          if (w.unsub) w.unsub()
           watchers.delete(w)
         }
       }
@@ -1321,18 +1379,18 @@ wss.on('connection', (ws) => {
   })
 })
 
-function startWatching (room, keyHex, ws) {
+function startWatching (room: Room, keyHex: string, ws: WebSocket) {
   if (!roomWatchers.has(keyHex)) roomWatchers.set(keyHex, new Set())
-  const watchers = roomWatchers.get(keyHex)
+  const watchers = roomWatchers.get(keyHex)!
 
   // Don't double-watch from same ws
   for (const w of watchers) {
     if (w.ws === ws) return
   }
 
-  const entry = { ws: null, unsub: null }
+  const entry: { ws: WebSocket | null; unsub: (() => void) | null } = { ws: null, unsub: null }
 
-  const unsub = room.watch((msg, seq) => {
+  const unsub = room.watch((msg: RoomMessage, seq: number) => {
     if (ws.readyState !== 1) {
       if (entry.unsub) entry.unsub()
       watchers.delete(entry)
@@ -1364,12 +1422,12 @@ function startWatching (room, keyHex, ws) {
   watchers.add(entry)
 }
 
-function stopWatching (keyHex, ws) {
+function stopWatching (keyHex: string, ws: WebSocket) {
   const watchers = roomWatchers.get(keyHex)
   if (!watchers) return
   for (const w of watchers) {
     if (w.ws === ws) {
-      w.unsub()
+      if (w.unsub) w.unsub()
       watchers.delete(w)
     }
   }
@@ -1379,20 +1437,35 @@ function stopWatching (keyHex, ws) {
 quibble.swarm.on('connection', (socket, info) => {
   const peerKey = b4a.toString(info.publicKey, 'hex')
   broadcast({ type: 'peer-connected', peerKey })
+  broadcastSwarmStats()
+  socket.on('close', () => {
+    broadcast({ type: 'peer-disconnected', peerKey })
+    broadcastSwarmStats()
+  })
 })
 
-function broadcast (msg) {
+function broadcastSwarmStats () {
+  const connections = quibble.swarm.connections?.size ?? 0
+  const rooms = quibble.rooms.size
+  const writers = new Map()
+  for (const [key, room] of quibble.rooms) {
+    writers.set(key, room.base?.activeWriters ?? 0)
+  }
+  broadcast({ type: 'swarm-stats', connections, rooms, writers: Object.fromEntries(writers) })
+}
+
+function broadcast (msg: Record<string, unknown>) {
   const data = JSON.stringify(msg)
   for (const ws of wss.clients) {
     try { ws.send(data) } catch {}
   }
 }
 
-async function findMessageById (room, messageId) {
-  let beforeSeq = null
+async function findMessageById (room: Room, messageId: string): Promise<RoomMessageWithSeq | null> {
+  let beforeSeq: number | null = null
 
   while (true) {
-    const page = await room.historyPage({ limit: 500, beforeSeq })
+    const page: { messages: RoomMessageWithSeq[]; total: number; nextBeforeSeq: number | null } = await room.historyPage({ limit: 500, beforeSeq })
     for (let i = page.messages.length - 1; i >= 0; i--) {
       const candidate = page.messages[i]
       if (candidate?.id === messageId) return candidate
@@ -1402,14 +1475,14 @@ async function findMessageById (room, messageId) {
   }
 }
 
-async function getLatestUserReactionState (room, { messageId, emoji, senderKey }) {
-  let beforeSeq = null
+async function getLatestUserReactionState (room: Room, { messageId, emoji, senderKey }: { messageId: string; emoji: string; senderKey: string }) {
+  let beforeSeq: number | null = null
   let active = false
   let bestSeq = -1
   let bestTimestamp = -1
 
   while (true) {
-    const page = await room.historyPage({ limit: 500, beforeSeq })
+    const page: { messages: RoomMessageWithSeq[]; total: number; nextBeforeSeq: number | null } = await room.historyPage({ limit: 500, beforeSeq })
 
     for (const candidate of page.messages) {
       if (!candidate || String(candidate.sender || '') !== senderKey) continue
@@ -1451,21 +1524,3 @@ async function getLatestUserReactionState (room, { messageId, emoji, senderKey }
     beforeSeq = page.nextBeforeSeq
   }
 }
-
-// ─── Start ───
-const listenPort = await findOpenPort(DEFAULT_PORT)
-if (listenPort !== DEFAULT_PORT) {
-  console.warn(`⚠️  Port ${DEFAULT_PORT} is in use, using ${listenPort} instead.`)
-}
-
-httpServer.listen(listenPort, LISTEN_HOST, () => {
-  console.log(`\n  🚀 Quibble Web UI running at http://localhost:${listenPort}`)
-  console.log(`  📞 WebRTC signaling via Autobase (no separate signaling server needed)`)
-  const lanUrls = getLanUrls(listenPort)
-  for (const url of lanUrls) {
-    console.log(`  📱 LAN: ${url}`)
-  }
-  console.log('')
-  console.log(`  Identity: ${identity.name} (${b4a.toString(identity.publicKey, 'hex').slice(0, 16)}…)`)
-  console.log(`  Storage:  ${storageDir}\n`)
-})

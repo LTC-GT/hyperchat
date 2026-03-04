@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Identity management for quibble.
  *
@@ -26,7 +25,6 @@ import {
 const require = createRequire(import.meta.url)
 const Autobase = require('autobase')
 const crypto = require('hypercore-crypto')
-const sodium = require('sodium-universal')
 
 const QUIBBLE_DIR = path.join(os.homedir(), '.quibble')
 const LEGACY_IDENTITY_DIR = path.join(os.homedir(), '.neet')
@@ -34,26 +32,34 @@ const LEGACY_ID_PATH = path.join(LEGACY_IDENTITY_DIR, 'identity.json')
 const IDENTITY_DB_DIR = 'identity-hyperdb'
 const IDENTITY_SCHEMA = 'quibble.identity.v1'
 
-function openIdentityView (store) {
+interface IdentityState {
+  type: string
+  schema: string
+  seedPhrase: string
+  name: string
+  updatedAt: number
+}
+
+function openIdentityView (store: InstanceType<typeof Corestore>) {
   return store.get('identity-view', { valueEncoding: 'json' })
 }
 
-async function applyIdentity (nodes, view) {
+async function applyIdentity (nodes: { value: unknown }[], view: { append(v: unknown): Promise<void> }) {
   for (const node of nodes) {
-    const value = node?.value
+    const value = node?.value as Record<string, unknown> | null | undefined
     if (!value || value.type !== 'identity-state') continue
     await view.append(value)
   }
 }
 
-function normalizeSeedPhrase (seedPhrase) {
+function normalizeSeedPhrase (seedPhrase: string | null | undefined) {
   return String(seedPhrase || '')
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-function seedPhraseToEntropy (seedPhrase) {
+function seedPhraseToEntropy (seedPhrase: string) {
   const phrase = normalizeSeedPhrase(seedPhrase)
   if (!phrase || !validateMnemonic(phrase, wordlists.english)) {
     throw new Error('Invalid seed phrase. Expected a valid 24-word phrase.')
@@ -63,11 +69,11 @@ function seedPhraseToEntropy (seedPhrase) {
   return { phrase, entropy: b4a.from(entropyHex, 'hex') }
 }
 
-function entropyToSeedPhrase (entropy) {
+function entropyToSeedPhrase (entropy: Buffer) {
   return entropyToMnemonic(b4a.toString(entropy, 'hex'), wordlists.english)
 }
 
-function keypairFromSeedPhrase (seedPhrase) {
+function keypairFromSeedPhrase (seedPhrase: string) {
   const { phrase, entropy } = seedPhraseToEntropy(seedPhrase)
   const kp = crypto.keyPair(entropy)
   return {
@@ -77,7 +83,7 @@ function keypairFromSeedPhrase (seedPhrase) {
   }
 }
 
-function buildIdentityState ({ seedPhrase, name = 'anon' }) {
+function buildIdentityState ({ seedPhrase, name = 'anon' }: { seedPhrase: string; name?: string }): IdentityState {
   return {
     type: 'identity-state',
     schema: IDENTITY_SCHEMA,
@@ -87,7 +93,7 @@ function buildIdentityState ({ seedPhrase, name = 'anon' }) {
   }
 }
 
-async function openIdentityBase (dir) {
+async function openIdentityBase (dir: string) {
   const storePath = path.join(dir, IDENTITY_DB_DIR)
   fs.mkdirSync(dir, { recursive: true })
 
@@ -105,28 +111,28 @@ async function openIdentityBase (dir) {
   return { store, base }
 }
 
-async function closeIdentityBase ({ base, store }) {
+async function closeIdentityBase ({ base, store }: { base?: { close?(): Promise<void> } | null; store?: { close?(): Promise<void> } | null }) {
   try { await base?.close?.() } catch {}
   try { await store?.close?.() } catch {}
 }
 
-async function readCurrentIdentityState (base) {
+async function readCurrentIdentityState (base: { update(): Promise<void>; view: { length: number; get(seq: number): Promise<unknown> } }): Promise<IdentityState | null> {
   await base.update()
   const view = base.view
   if (!view || view.length === 0) return null
 
-  const state = await view.get(view.length - 1)
+  const state = await view.get(view.length - 1) as IdentityState | null
   if (!state?.seedPhrase) return null
   return state
 }
 
-function deriveSeedPhraseFromLegacyIdentity (legacy) {
+function deriveSeedPhraseFromLegacyIdentity (legacy: { secretKey: string }) {
   const secret = b4a.from(legacy.secretKey, 'hex')
   const entropy = secret.length >= 32 ? secret.subarray(0, 32) : crypto.discoveryKey(secret).subarray(0, 32)
   return entropyToSeedPhrase(entropy)
 }
 
-function readLegacyIdentity (dir) {
+function readLegacyIdentity (dir: string) {
   const legacyPath = path.join(dir, 'identity.json')
   if (!fs.existsSync(legacyPath)) return null
 
@@ -142,7 +148,7 @@ function readLegacyIdentity (dir) {
   }
 }
 
-async function writeIdentityState (dir, state) {
+async function writeIdentityState (dir: string, state: IdentityState) {
   const db = await openIdentityBase(dir)
   try {
     await db.base.append(state)
@@ -151,7 +157,7 @@ async function writeIdentityState (dir, state) {
   }
 }
 
-async function ensureIdentityState (dir, name = 'anon') {
+async function ensureIdentityState (dir: string, name = 'anon') {
   const db = await openIdentityBase(dir)
 
   try {
@@ -178,21 +184,13 @@ async function ensureIdentityState (dir, name = 'anon') {
 }
 
 /**
- * Generate a fresh Ed25519 keypair.
- * @returns {{ publicKey: Buffer, secretKey: Buffer }}
- */
-export function generateKeypair () {
-  return crypto.keyPair()
-}
-
-/**
  * Load identity from local Hypercore-backed state, creating one if missing.
  * @param {object} [opts]
  * @param {string} [opts.name='anon'] - Display name to store alongside the key.
  * @param {string} [opts.dir] - Override the identity directory.
  * @returns {Promise<{ publicKey: Buffer, secretKey: Buffer, seedPhrase: string, name: string, dir: string }>}
  */
-export async function loadIdentity (opts = {}) {
+export async function loadIdentity (opts: { name?: string; dir?: string } = {}): Promise<Identity> {
   const dir = opts.dir || QUIBBLE_DIR
   const name = String(opts.name || 'anon').trim() || 'anon'
   const state = await ensureIdentityState(dir, name)
@@ -210,7 +208,7 @@ export async function loadIdentity (opts = {}) {
 /**
  * Update the display name stored in identity state.
  */
-export async function setName (name, dir) {
+export async function setName (name: string, dir?: string) {
   dir = dir || QUIBBLE_DIR
   const state = await ensureIdentityState(dir)
   const next = buildIdentityState({
@@ -223,7 +221,7 @@ export async function setName (name, dir) {
 /**
  * Read the current seed phrase.
  */
-export async function getSeedPhrase (opts = {}) {
+export async function getSeedPhrase (opts: { dir?: string; name?: string } = {}) {
   const dir = opts.dir || QUIBBLE_DIR
   const state = await ensureIdentityState(dir, opts.name || 'anon')
   return normalizeSeedPhrase(state.seedPhrase)
@@ -231,8 +229,10 @@ export async function getSeedPhrase (opts = {}) {
 
 /**
  * Import (replace) identity from seed phrase.
+ * Validates the phrase, derives a keypair to verify it's valid,
+ * then persists the new identity state.
  */
-export async function importSeedPhrase (seedPhrase, opts = {}) {
+export async function importSeedPhrase (seedPhrase: string, opts: { dir?: string; name?: string } = {}) {
   const dir = opts.dir || QUIBBLE_DIR
   const normalized = normalizeSeedPhrase(seedPhrase)
   const words = normalized ? normalized.split(' ') : []
@@ -241,31 +241,31 @@ export async function importSeedPhrase (seedPhrase, opts = {}) {
     throw new Error('Seed phrase must contain exactly 24 words.')
   }
 
-  const { phrase } = seedPhraseToEntropy(normalized)
+  // Validate the phrase produces a valid keypair before persisting
+  const { phrase, entropy } = seedPhraseToEntropy(normalized)
+  const kp = crypto.keyPair(entropy)
+  if (!kp || !kp.publicKey || kp.publicKey.length !== 32) {
+    throw new Error('Seed phrase did not produce a valid keypair.')
+  }
+
   const current = await ensureIdentityState(dir, opts.name || 'anon')
+
+  // Check if this is the same identity (no-op)
+  if (normalizeSeedPhrase(current.seedPhrase) === phrase) {
+    return current
+  }
+
   const next = buildIdentityState({
     seedPhrase: phrase,
     name: String(opts.name || current.name || 'anon').trim() || 'anon'
   })
 
   await writeIdentityState(dir, next)
-  return next
+
+  // Return the derived keypair info so caller can verify
+  return {
+    ...next,
+    publicKey: b4a.toString(kp.publicKey, 'hex')
+  }
 }
 
-/**
- * Sign arbitrary data with our secret key.
- */
-export function sign (data, secretKey) {
-  const sig = b4a.allocUnsafe(sodium.crypto_sign_BYTES)
-  sodium.crypto_sign_detached(sig, data, secretKey)
-  return sig
-}
-
-/**
- * Verify a signature.
- */
-export function verify (data, signature, publicKey) {
-  return sodium.crypto_sign_verify_detached(signature, data, publicKey)
-}
-
-export { QUIBBLE_DIR, LEGACY_ID_PATH }

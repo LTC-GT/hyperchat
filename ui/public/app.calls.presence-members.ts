@@ -1,19 +1,18 @@
-// @ts-nocheck
 const PRESENCE_AWAY_AFTER_MS = 10 * 60 * 1000
 const PRESENCE_REFRESH_INTERVAL_MS = 60 * 1000
-let presenceAwayTimer = null
-let presenceRefreshTimer = null
+let presenceAwayTimer: ReturnType<typeof setTimeout> | null = null
+let presenceRefreshTimer: ReturnType<typeof setInterval> | null = null
 let lastPresenceBroadcastAt = 0
-let autoBitrateTimer = null
+let autoBitrateTimer: ReturnType<typeof setInterval> | null = null
 
-function normalizePresenceStatus (value) {
+function normalizePresenceStatus (value: unknown) {
   const status = String(value || 'active').toLowerCase()
   if (status === 'active' || status === 'away') return status
   if (status === 'online') return 'active'
   return 'away'
 }
 
-function resolveEffectivePresenceStatus (status, lastActivityAt) {
+function resolveEffectivePresenceStatus (status: string | null | undefined, lastActivityAt: number | null | undefined) {
   const normalized = normalizePresenceStatus(status)
   const at = Number(lastActivityAt) || 0
   if (normalized !== 'active') return normalized
@@ -21,7 +20,7 @@ function resolveEffectivePresenceStatus (status, lastActivityAt) {
   return (Date.now() - at >= PRESENCE_AWAY_AFTER_MS) ? 'away' : 'active'
 }
 
-function getPresenceMeta (statusOverride = null, lastActivityAt = null) {
+function getPresenceMeta (statusOverride?: string | null, lastActivityAt?: number | null) {
   const status = resolveEffectivePresenceStatus(statusOverride || state.settings.presenceStatus, lastActivityAt || state.lastPresenceActivityAt)
   if (status === 'away') return { label: 'Online - Away', dotClass: 'bg-quibble-blurple', visibleOnline: true }
   return { label: 'Online - Active', dotClass: 'bg-quibble-green', visibleOnline: true }
@@ -49,7 +48,7 @@ function maybeSetPresenceAway () {
   setPresenceStatus('away', { forceBroadcast: true, at: lastActivityAt })
 }
 
-function setPresenceStatus (status, options = {}) {
+function setPresenceStatus (status: string, options: { broadcast?: boolean; forceBroadcast?: boolean; at?: number } = {}) {
   const nextStatus = normalizePresenceStatus(status)
   const prevStatus = normalizePresenceStatus(state.settings.presenceStatus)
   const changed = nextStatus !== prevStatus
@@ -172,7 +171,7 @@ function renderRemoteVideos () {
   }
 }
 
-function bindCallVideoFullscreen (videoEl, label = 'participant') {
+function bindCallVideoFullscreen (videoEl: HTMLVideoElement | DomRef, label = 'participant') {
   if (!videoEl) return
   videoEl.style.cursor = 'zoom-in'
   videoEl.title = `Click to fullscreen ${label}`
@@ -208,7 +207,7 @@ function getCallRecordingElements () {
   const tiles = []
   if (includeSelf && dom.localVideo?.srcObject) tiles.push(dom.localVideo)
   if (dom.remoteVideos) {
-    const remote = [...dom.remoteVideos.querySelectorAll('video')]
+    const remote = Array.from(dom.remoteVideos.querySelectorAll('video'))
     for (const video of remote) {
       if (video?.srcObject) tiles.push(video)
     }
@@ -259,7 +258,7 @@ function drawRecordingFrame () {
       const dx = x + (tileW - dw) / 2
       const dy = y + (tileH - dh) / 2
 
-      try { ctx.drawImage(video, dx, dy, dw, dh) } catch {}
+      try { ctx.drawImage(video as unknown as CanvasImageSource, dx, dy, dw, dh) } catch {}
 
       const label = video === dom.localVideo ? 'You' : (video.dataset.peer || 'Peer')
       ctx.fillStyle = 'rgba(0,0,0,0.45)'
@@ -306,7 +305,7 @@ function syncCallRecordingAudioSources () {
 
 function buildRecordingFileName () {
   const date = new Date()
-  const pad = (value) => String(value).padStart(2, '0')
+  const pad = (value: number) => String(value).padStart(2, '0')
   const stamp = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`
   const roomName = (state.rooms.get(state.activeCall?.roomKey || '')?.name || 'call').replace(/[^a-z0-9_-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()
   return `quibble-${roomName || 'call'}-${stamp}.webm`
@@ -329,7 +328,7 @@ async function startCallRecording () {
   recording.canvas.height = 720
   recording.canvasStream = recording.canvas.captureStream(30)
 
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
   recording.audioContext = audioContext
   recording.audioDestination = audioContext.createMediaStreamDestination()
   recording.audioSources = new Map()
@@ -338,7 +337,7 @@ async function startCallRecording () {
   const outputTracks = [...recording.canvasStream.getVideoTracks(), ...recording.audioDestination.stream.getAudioTracks()]
   recording.mixedStream = new MediaStream(outputTracks)
 
-  const recorderOptions = recording.mimeType ? { mimeType: recording.mimeType } : undefined
+  const recorderOptions: MediaRecorderOptions | undefined = recording.mimeType ? { mimeType: recording.mimeType } : undefined
   const bitrateHint = Math.max(1000000, Math.min(12000000, Number(state.settings.callBitrateMode) || computeAutoCallBitrate() || 2500000))
   if (recorderOptions) recorderOptions.videoBitsPerSecond = bitrateHint
   const recorder = recorderOptions
@@ -432,7 +431,7 @@ async function toggleCallRecording () {
 }
 
 function buildCameraConstraintsFromSettings () {
-  const constraints = {
+  const constraints: MediaTrackConstraintSet & { deviceId?: { exact: string } } = {
     width: state.settings.enableHD === false
       ? { ideal: 960, max: 1280 }
       : { ideal: 1920, max: 2560 },
@@ -447,10 +446,10 @@ function buildCameraConstraintsFromSettings () {
   return constraints
 }
 
-function getPeerVideoSender (pc) {
-  const byTrack = pc.getSenders().find((sender) => sender?.track?.kind === 'video')
+function getPeerVideoSender (pc: RTCPeerConnection) {
+  const byTrack = pc.getSenders().find((sender: RTCRtpSender) => sender?.track?.kind === 'video')
   if (byTrack) return byTrack
-  const transceiver = pc.getTransceivers().find((candidate) => {
+  const transceiver = pc.getTransceivers().find((candidate: RTCRtpTransceiver) => {
     const senderKind = candidate?.sender?.track?.kind
     const receiverKind = candidate?.receiver?.track?.kind
     return senderKind === 'video' || receiverKind === 'video'
@@ -519,7 +518,7 @@ async function toggleCallScreenShare () {
   }
 }
 
-async function replaceVideoTrack (track) {
+async function replaceVideoTrack (track: MediaStreamTrack | null) {
   for (const pc of state.peerConnections.values()) {
     const sender = getPeerVideoSender(pc)
     if (sender) {
@@ -533,7 +532,7 @@ async function replaceVideoTrack (track) {
   }
 }
 
-function applyCallBitrate (bitrate) {
+function applyCallBitrate (bitrate: string | number) {
   const mode = String(bitrate || state.settings.callBitrateMode || 'auto').toLowerCase()
   const usingAuto = mode === 'auto'
   const target = usingAuto
@@ -565,7 +564,7 @@ function applyCallBitrate (bitrate) {
   refreshCallControlsMenu()
 }
 
-function setCallBitrateMode (mode) {
+function setCallBitrateMode (mode: string | number) {
   const value = String(mode || 'auto').toLowerCase()
   state.settings.callBitrateMode = value === 'auto' ? 'auto' : String(Number(value) > 0 ? Number(value) : 'auto')
   saveClientSettings()
@@ -613,7 +612,7 @@ function ensureAutoCallBitrateLoop () {
 
 function refreshCallControlsMenu () {
   const hasCall = Boolean(state.activeCall)
-  const inCall = hasCall && state.activeCall.roomKey === state.activeRoom
+  const inCall = hasCall && state.activeCall?.roomKey === state.activeRoom
   const micEnabled = state.settings.micEnabled !== false
   const camEnabled = state.settings.cameraEnabled !== false
 
@@ -685,10 +684,10 @@ function updateMemberList () {
   const selfStatus = resolveEffectivePresenceStatus(state.settings.presenceStatus, state.lastPresenceActivityAt)
   const selfPresence = getPresenceMeta(selfStatus, state.lastPresenceActivityAt)
 
-  const activeRows = []
-  const awayRows = []
+  const activeRows: HTMLElement[] = []
+  const awayRows: HTMLElement[] = []
 
-  const appendByStatus = (row, status) => {
+  const appendByStatus = (row: HTMLElement, status: string) => {
     if (status === 'away') awayRows.push(row)
     else activeRows.push(row)
   }
@@ -751,7 +750,7 @@ function updateMemberList () {
   updateSecurityStatus()
 }
 
-function createMemberEl ({ key, name, avatar, isOnline, isAway = false, isSelf, isOwner = false }) {
+function createMemberEl ({ key, name, avatar, isOnline, isAway = false, isSelf, isOwner = false }: { key?: string; name: string; avatar?: string | null; isOnline: boolean; isAway?: boolean; isSelf: boolean; isOwner?: boolean }) {
   const div = document.createElement('div')
   div.className = 'flex items-center gap-3 px-2 py-1.5 rounded hover:bg-quibble-hover cursor-pointer group'
   const av = avatar ? `<img src="${avatar}" class="w-full h-full object-cover">` : getDefaultAvatar(name)
@@ -776,7 +775,10 @@ function createMemberEl ({ key, name, avatar, isOnline, isAway = false, isSelf, 
     if (!key || !state.activeRoom || isFriend) return
     send({ type: 'friend-request', roomKey: state.activeRoom, targetKey: key, targetName: name })
   })
-  div.querySelector('.dm-btn')?.addEventListener('click', () => openDmWithFriend(key, name))
+  div.querySelector('.dm-btn')?.addEventListener('click', () => {
+    if (!key) return
+    openDmWithFriend(key, name)
+  })
 
   return div
 }

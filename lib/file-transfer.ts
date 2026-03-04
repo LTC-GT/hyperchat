@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * File transfer over Hypercore.
  *
@@ -14,6 +13,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import type { Corestore as CorestoreType } from 'autobase'
 import b4a from 'b4a'
 
 const require = createRequire(import.meta.url)
@@ -29,7 +29,7 @@ const BLOCK_SIZE = 64 * 1024 // 64 KiB per Hypercore block
  * @param {object}  identity  – sender identity
  * @returns {Promise<object>} the file message that was appended
  */
-export async function sendFile (filePath, store, room, identity, opts = {}) {
+export async function sendFile (filePath: string, store: CorestoreType, room: import('./room.js').Room, identity: Identity, opts: SendFileOpts = {}) {
   const resolved = path.resolve(filePath)
   const stat = fs.statSync(resolved)
   const filename = path.basename(resolved)
@@ -56,7 +56,7 @@ export async function sendFile (filePath, store, room, identity, opts = {}) {
 
   // Append a file message to the room
   const { fileMsg } = await import('./messages.js')
-  const msg = fileMsg(filename, size, guessMime(filename), core.key, identity, opts.channelId || null)
+  const msg: FileMessage = fileMsg(filename, size, guessMime(filename), core.key, identity, opts.channelId || null)
   if (opts.threadRootId) msg.threadRootId = String(opts.threadRootId)
   if (opts.dmKey) msg.dmKey = String(opts.dmKey)
   if (opts.dmParticipants && Array.isArray(opts.dmParticipants)) {
@@ -75,7 +75,7 @@ export async function sendFile (filePath, store, room, identity, opts = {}) {
  * @param {string}  destDir     – directory to save the file into
  * @returns {Promise<string>} path to the saved file
  */
-export async function recvFile (fileMessage, store, destDir) {
+export async function recvFile (fileMessage: FileMessage, store: CorestoreType, destDir: string) {
   const key = b4a.from(fileMessage.coreKey, 'hex')
   const core = store.get(key)
   await core.ready()
@@ -94,7 +94,7 @@ export async function recvFile (fileMessage, store, destDir) {
   }
 
   ws.end()
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     ws.on('finish', resolve)
     ws.on('error', reject)
   })
@@ -104,7 +104,7 @@ export async function recvFile (fileMessage, store, destDir) {
 
 // ─── Helpers ───
 
-const MIME_MAP = {
+const MIME_MAP: Record<string, string> = {
   '.txt': 'text/plain',
   '.md': 'text/markdown',
   '.json': 'application/json',
@@ -124,7 +124,7 @@ const MIME_MAP = {
   '.gz': 'application/gzip'
 }
 
-function guessMime (filename) {
+function guessMime (filename: string) {
   const ext = path.extname(filename).toLowerCase()
   return MIME_MAP[ext] || 'application/octet-stream'
 }

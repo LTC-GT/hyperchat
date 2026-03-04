@@ -1,13 +1,15 @@
-// @ts-nocheck
 const UNICODE_EMOJIS = ['😀', '😂', '😍', '😎', '🤔', '😭', '🔥', '✅', '🎉', '🚀', '💯', '👀', '❤️', '👍', '👎', '🙏', '✨', '🎧', '🎤', '📎', '📁', '😅', '😴', '🤝']
 
-const state = {
+const state: ClientState = {
   ws: null,
   identity: null,
   profile: { fullName: '', username: '', avatar: null, setupDone: false },
   rooms: new Map(),
   activeRoom: null,
   peers: new Set(),
+  swarmConnections: 0,
+  swarmRooms: 0,
+  swarmWriters: {},
   membersVisible: true,
   messagesByRoom: new Map(),
   seenIds: new Set(),
@@ -71,7 +73,7 @@ const state = {
     callBitrateMode: 'auto',
     notificationTone: 'chime',
     ringtone: 'ring-bell',
-    stunPreset: 'google',
+    stunPreset: 'cloudflare',
     customStunUrl: ''
   },
   p2pNetworkTest: {
@@ -103,13 +105,38 @@ const state = {
   }
 }
 
-const $ = (sel) => document.querySelector(sel)
+interface DomRef extends HTMLElement {
+  value: string
+  checked: boolean
+  disabled: boolean
+  files: FileList | null
+  srcObject: MediaProvider | null
+  placeholder: string
+  selectionStart: number
+  selectionEnd: number
+  scrollHeight: number
+  readyState: number
+  videoWidth: number
+  videoHeight: number
+  autoplay: boolean
+  playsInline: boolean
+  select: () => void
+  focus: () => void
+  click: () => void
+  requestFullscreen: () => Promise<void>
+}
+type DomRefs = Record<string, DomRef>
+
+const $ = (sel: string): Element | null => document.querySelector(sel)
 
 const dom = {
   app: $('#app'),
   connectionGate: $('#connectionGate'),
   connectionGateTitle: $('#connectionGateTitle'),
   connectionGateDetail: $('#connectionGateDetail'),
+  connectionGateIconSpinner: $('#connectionGateIconSpinner'),
+  connectionGateIconSuccess: $('#connectionGateIconSuccess'),
+  connectionGateProgressFill: $('#connectionGateProgressFill'),
   setupModal: $('#setupModal'),
   setupFullName: $('#setupFullName'),
   setupUsername: $('#setupUsername'),
@@ -229,6 +256,8 @@ const dom = {
   securityStatusBtn: $('#securityStatusBtn'),
   securityTooltip: $('#securityTooltip'),
   securityPeers: $('#securityPeers'),
+  securitySwarmConns: $('#securitySwarmConns'),
+  securityWriters: $('#securityWriters'),
   securityKnownMembers: $('#securityKnownMembers'),
   securityConn: $('#securityConn'),
   securityEncrypt: $('#securityEncrypt'),
@@ -279,6 +308,8 @@ const dom = {
   friendRequestCount: $('#friendRequestCount'),
   friendRequestList: $('#friendRequestList'),
   friendList: $('#friendList'),
+  btnCopyFriendLink: $('#btnCopyFriendLink'),
+  btnPasteFriendLink: $('#btnPasteFriendLink'),
 
   usernameConflictModal: $('#usernameConflictModal'),
   usernameConflictText: $('#usernameConflictText'),
@@ -310,44 +341,63 @@ const dom = {
   settingsStunPreset: $('#settingsStunPreset'),
   settingsCustomStunUrl: $('#settingsCustomStunUrl'),
   settingsCustomStunWrap: $('#settingsCustomStunWrap')
+} as unknown as DomRefs
+
+type AppDialogMode = 'alert' | 'confirm' | 'prompt'
+type AppDialogRequest = {
+  mode: AppDialogMode
+  title?: string
+  message: string
+  confirmText?: string
+  cancelText?: string
+  placeholder?: string
+  defaultValue?: string
+  resolve: (value?: string | boolean | null) => void
 }
 
-const appDialogQueue = []
-let activeAppDialog = null
+const appDialogQueue: AppDialogRequest[] = []
+let activeAppDialog: AppDialogRequest | null = null
 
 loadClientSettings()
 initAppDialogs()
 
 const BOOT_ROOM_DISCOVERY_WAIT_MS = 900
-const WS_CONNECT_TIMEOUT_MS = 8000
-const WS_RECONNECT_DELAY_MS = 2000
+const WS_CONNECT_TIMEOUT_MS = 1500
+const WS_RECONNECT_BASE_MS = 200
+const WS_RECONNECT_MAX_MS = 4000
+const WS_STARTUP_MIN_RETRY_MS = 1200
+const WS_STARTUP_QUIET_WINDOW_MS = 12000
+let wsReconnectDelay = WS_RECONNECT_BASE_MS
 const CLIENT_SETTINGS_KEY = 'quibble-client-settings-v1'
 const LEGACY_CLIENT_SETTINGS_KEY = 'quibble-client-settings-v0'
 const PRESENCE_STATUSES = ['active', 'away']
 let localDbResetPending = false
 let wsSessionToken = 0
-let wsConnectTimeout = null
-let wsReconnectTimer = null
+let wsConnectTimeout: ReturnType<typeof setTimeout> | null = null
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
+let wsHasEverConnected = false
+let wsStartupLogCounter = 0
+const wsBootStartedAt = Date.now()
 
 function initAppDialogs () {
   if (!dom.appDialogModal || !dom.appDialogConfirm || !dom.appDialogCancel) return
 
   dom.appDialogConfirm.addEventListener('click', () => resolveActiveAppDialog(true))
   dom.appDialogCancel.addEventListener('click', () => resolveActiveAppDialog(false))
-  dom.appDialogModal.addEventListener('click', (event) => {
+  dom.appDialogModal.addEventListener('click', (event: MouseEvent) => {
     if (event.target !== dom.appDialogModal) return
     if (activeAppDialog?.mode === 'alert') resolveActiveAppDialog(true)
     else resolveActiveAppDialog(false)
   })
 
-  document.addEventListener('keydown', (event) => {
+  document.addEventListener('keydown', (event: KeyboardEvent) => {
     if (!activeAppDialog || event.key !== 'Escape') return
     event.preventDefault()
     if (activeAppDialog.mode === 'alert') resolveActiveAppDialog(true)
     else resolveActiveAppDialog(false)
   })
 
-  dom.appDialogInput?.addEventListener('keydown', (event) => {
+  dom.appDialogInput?.addEventListener('keydown', (event: KeyboardEvent) => {
     if (!activeAppDialog) return
     if (event.key === 'Enter') {
       event.preventDefault()
@@ -356,8 +406,8 @@ function initAppDialogs () {
   })
 }
 
-function queueAppDialog (options) {
-  return new Promise((resolve) => {
+function queueAppDialog (options: Omit<AppDialogRequest, 'resolve'>): Promise<string | boolean | null | void> {
+  return new Promise((resolve: (value?: string | boolean | null) => void) => {
     appDialogQueue.push({ ...options, resolve })
     pumpAppDialogQueue()
   })
@@ -365,7 +415,9 @@ function queueAppDialog (options) {
 
 function pumpAppDialogQueue () {
   if (activeAppDialog || appDialogQueue.length === 0 || !dom.appDialogModal) return
-  activeAppDialog = appDialogQueue.shift()
+  const nextDialog = appDialogQueue.shift()
+  if (!nextDialog) return
+  activeAppDialog = nextDialog
 
   const title = String(activeAppDialog.title || 'Quibble')
   const message = String(activeAppDialog.message || '')
@@ -400,7 +452,7 @@ function pumpAppDialogQueue () {
   })
 }
 
-function resolveActiveAppDialog (confirmed) {
+function resolveActiveAppDialog (confirmed: boolean) {
   if (!activeAppDialog) return
   const current = activeAppDialog
   activeAppDialog = null
@@ -422,7 +474,7 @@ function resolveActiveAppDialog (confirmed) {
   pumpAppDialogQueue()
 }
 
-function appAlert (message, options = {}) {
+function appAlert (message: string, options: DialogOptions = {}) {
   return queueAppDialog({
     mode: 'alert',
     title: options.title || 'Quibble',
@@ -431,7 +483,7 @@ function appAlert (message, options = {}) {
   })
 }
 
-function appConfirm (message, options = {}) {
+function appConfirm (message: string, options: DialogOptions = {}) {
   return queueAppDialog({
     mode: 'confirm',
     title: options.title || 'Quibble',
@@ -441,7 +493,7 @@ function appConfirm (message, options = {}) {
   })
 }
 
-function appPrompt (message, options = {}) {
+function appPrompt (message: string, options: DialogOptions = {}) {
   return queueAppDialog({
     mode: 'prompt',
     title: options.title || 'Quibble',
@@ -453,7 +505,7 @@ function appPrompt (message, options = {}) {
   })
 }
 
-function downloadTextFile (fileName, content) {
+function downloadTextFile (fileName: string, content: string) {
   const blob = new Blob([String(content || '')], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -465,7 +517,7 @@ function downloadTextFile (fileName, content) {
   setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
 
-function parseSeedPhraseInput (raw) {
+function parseSeedPhraseInput (raw: unknown): string {
   const text = String(raw || '').trim()
   if (!text) return ''
 
@@ -483,7 +535,7 @@ function hideSeedBackupModal () {
   dom.seedBackupModal?.classList.add('hidden')
 }
 
-function showSeedBackupModal (payload) {
+function showSeedBackupModal (payload: { seedPhrase?: string } | null | undefined) {
   const phrase = String(payload?.seedPhrase || '').trim()
 
   state.pendingSeedPhrase = phrase
@@ -513,7 +565,7 @@ function loadClientSettings () {
         : 'auto',
       notificationTone: String(parsed.notificationTone || 'chime'),
       ringtone: String(parsed.ringtone || 'ring-bell'),
-      stunPreset: String(parsed.stunPreset || 'google'),
+      stunPreset: String(parsed.stunPreset || 'cloudflare') === 'mozilla' ? 'cloudflare' : String(parsed.stunPreset || 'cloudflare'),
       customStunUrl: String(parsed.customStunUrl || '')
     }
   } catch {}
@@ -533,13 +585,13 @@ function saveClientSettings () {
       callBitrateMode: String(state.settings.callBitrateMode || 'auto'),
       notificationTone: state.settings.notificationTone,
       ringtone: state.settings.ringtone,
-      stunPreset: state.settings.stunPreset || 'google',
+      stunPreset: state.settings.stunPreset || 'cloudflare',
       customStunUrl: state.settings.customStunUrl || ''
     }))
   } catch {}
 }
 
-function setResetButtonBusy (busy) {
+function setResetButtonBusy (busy: boolean) {
   if (!dom.btnResetLocalDB) return
   dom.btnResetLocalDB.disabled = busy
   dom.btnResetLocalDB.classList.toggle('opacity-60', busy)
@@ -573,13 +625,13 @@ function stopRingtoneLoop () {
   state.ringingTimer = null
 }
 
-function playTonePreset (name, options = {}) {
-  const AudioCtx = window.AudioContext || window.webkitAudioContext
+function playTonePreset (name: string, options: TonePresetOptions = {}) {
+  const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
   if (!AudioCtx) return
 
   const ctx = new AudioCtx()
   const now = ctx.currentTime
-  const steps = {
+  const steps: Record<string, number[][]> = {
     ping: [[880, 0.08, 0], [660, 0.1, 0.09]],
     chime: [[523.25, 0.1, 0], [659.25, 0.12, 0.11], [783.99, 0.16, 0.24]],
     knock: [[210, 0.08, 0], [200, 0.08, 0.12], [190, 0.1, 0.24]],

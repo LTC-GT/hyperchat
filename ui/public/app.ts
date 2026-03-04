@@ -1,4 +1,3 @@
-// @ts-nocheck
 const APP_PARTS = [
   'app.bootstrap.core.js',
   'app.bootstrap.connection.js',
@@ -13,11 +12,11 @@ const APP_PARTS = [
   'ui.mobile.js'
 ]
 
-async function loadScriptSequentially (src) {
-  await new Promise((resolve, reject) => {
+async function loadScriptSequentially (src: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
     const script = document.createElement('script')
     script.src = src
-    script.onload = resolve
+    script.onload = () => resolve()
     script.onerror = () => reject(new Error(`Failed to load ${src}`))
     document.head.appendChild(script)
   })

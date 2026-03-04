@@ -1,8 +1,7 @@
-// @ts-nocheck
 const ROOM_ICON_FALLBACKS = ['😀', '😎', '🚀', '🎯', '🎮', '🧠', '🛸', '🐳', '🦄', '🌈', '⚡', '🔥', '🫧', '🍀', '🐙', '🦊', '🌙', '⭐']
-let inlineEditMessageId = null
+let inlineEditMessageId: string | null = null
 let inlineEditDraft = ''
-let activeReactionPicker = null
+let activeReactionPicker: HTMLDivElement | null = null
 
 function closeReactionPicker () {
   if (!activeReactionPicker) return
@@ -11,19 +10,19 @@ function closeReactionPicker () {
   document.removeEventListener('mousedown', handleReactionPickerOutsideClick, true)
 }
 
-function handleReactionPickerOutsideClick (event) {
+function handleReactionPickerOutsideClick (event: MouseEvent) {
   if (!activeReactionPicker) return
-  if (activeReactionPicker.contains(event.target)) return
+  if (activeReactionPicker.contains(event.target as Node | null)) return
   closeReactionPicker()
 }
 
-function normalizeReactionEmoji (value) {
+function normalizeReactionEmoji (value: unknown) {
   const emoji = String(value || '').trim()
   if (!emoji || emoji.length > 64) return ''
   return emoji
 }
 
-function getMessageReactionEntries (roomKey, messageId) {
+function getMessageReactionEntries (roomKey: string, messageId: string) {
   const byMessage = state.messageReactionsByRoom.get(roomKey)
   if (!byMessage || !messageId) return []
   const byEmoji = byMessage.get(String(messageId))
@@ -40,7 +39,7 @@ function getMessageReactionEntries (roomKey, messageId) {
     .sort((a, b) => b.count - a.count || String(a.emoji).localeCompare(String(b.emoji)))
 }
 
-function renderReactionGlyph (emoji) {
+function renderReactionGlyph (emoji: string) {
   const token = String(emoji || '').trim()
   const custom = /^:([a-z0-9_-]+):$/i.exec(token)
   if (custom && state.activeRoom) {
@@ -52,7 +51,7 @@ function renderReactionGlyph (emoji) {
   return `<span class="leading-none">${esc(token)}</span>`
 }
 
-function renderReactionBar (msg) {
+function renderReactionBar (msg: ClientMessage) {
   if (!state.activeRoom || !msg?.id) return ''
   const entries = getMessageReactionEntries(state.activeRoom, msg.id)
   if (entries.length === 0) return ''
@@ -73,7 +72,7 @@ function renderReactionBar (msg) {
   return `<div class="flex flex-wrap gap-1 mt-1">${chips}</div>`
 }
 
-function toggleMessageReaction (msg, emoji) {
+function toggleMessageReaction (msg: ClientMessage, emoji: string | undefined) {
   if (!state.activeRoom || !msg?.id) return
   const normalized = normalizeReactionEmoji(emoji)
   if (!normalized) return
@@ -86,7 +85,7 @@ function toggleMessageReaction (msg, emoji) {
   })
 }
 
-function openReactionPicker (anchor, msg) {
+function openReactionPicker (anchor: Element, msg: ClientMessage) {
   if (!anchor || !msg?.id || !state.activeRoom) return
   closeReactionPicker()
 
@@ -138,7 +137,7 @@ function openReactionPicker (anchor, msg) {
 
   panel.querySelectorAll('[data-emoji]').forEach((button) => {
     button.addEventListener('click', () => {
-      toggleMessageReaction(msg, button.dataset.emoji)
+      toggleMessageReaction(msg, (button as HTMLElement).dataset.emoji)
       closeReactionPicker()
     })
   })
@@ -163,18 +162,18 @@ function openReactionPicker (anchor, msg) {
   })
 }
 
-function wireMessageReactionControls (container, msg) {
+function wireMessageReactionControls (container: HTMLElement, msg: ClientMessage) {
   container.querySelectorAll('.reaction-add-btn').forEach((button) => {
-    button.addEventListener('click', (event) => {
+    button.addEventListener('click', (event: Event) => {
       event.stopPropagation()
       openReactionPicker(button, msg)
     })
   })
 
   container.querySelectorAll('.reaction-chip').forEach((button) => {
-    button.addEventListener('click', (event) => {
+    button.addEventListener('click', (event: Event) => {
       event.stopPropagation()
-      toggleMessageReaction(msg, button.dataset.reaction)
+      toggleMessageReaction(msg, (button as HTMLElement).dataset.reaction)
     })
   })
 }
@@ -188,13 +187,13 @@ function pickDefaultRoomEmoji (seed = '') {
   return ROOM_ICON_FALLBACKS[hash % ROOM_ICON_FALLBACKS.length]
 }
 
-function addRoom (keyHex, link, opts = {}) {
+function addRoom (keyHex: string, link: string, opts: { writable?: boolean } = {}) {
   const writable = typeof opts.writable === 'boolean' ? opts.writable : true
 
   if (state.rooms.has(keyHex)) {
     const room = state.rooms.get(keyHex)
-    if (link) room.link = link
-    if (typeof opts.writable === 'boolean') room.writable = opts.writable
+    if (link) room!.link = link
+    if (typeof opts.writable === 'boolean') room!.writable = opts.writable
     renderServerList()
     if (state.activeRoom === keyHex) updateComposerAccess()
     return
@@ -210,13 +209,13 @@ function addRoom (keyHex, link, opts = {}) {
   })
   state.messagesByRoom.set(keyHex, state.messagesByRoom.get(keyHex) || [])
   state.seenSeqByRoom.set(keyHex, state.seenSeqByRoom.get(keyHex) || new Set())
-  state.historyCursorByRoom.set(keyHex, state.historyCursorByRoom.has(keyHex) ? state.historyCursorByRoom.get(keyHex) : null)
+  state.historyCursorByRoom.set(keyHex, state.historyCursorByRoom.has(keyHex) ? state.historyCursorByRoom.get(keyHex) ?? null : null)
   state.historyLoadingByRoom.set(keyHex, false)
   state.roomBansByRoom.set(keyHex, state.roomBansByRoom.get(keyHex) || new Map())
   state.channelKicksByRoom.set(keyHex, state.channelKicksByRoom.get(keyHex) || new Map())
   state.roomEmojis.set(keyHex, state.roomEmojis.get(keyHex) || new Map())
   state.messageReactionsByRoom.set(keyHex, state.messageReactionsByRoom.get(keyHex) || new Map())
-  state.roomAdmins.set(keyHex, state.roomAdmins.get(keyHex) || new Set([state.identity?.publicKey].filter(Boolean)))
+  state.roomAdmins.set(keyHex, state.roomAdmins.get(keyHex) || new Set([state.identity?.publicKey].filter((x): x is string => Boolean(x))))
   state.roomOwnerByRoom.set(keyHex, state.roomOwnerByRoom.get(keyHex) || state.identity?.publicKey || null)
 
   if (!state.channelsByRoom.has(keyHex)) {
@@ -232,7 +231,7 @@ function addRoom (keyHex, link, opts = {}) {
   renderServerList()
 }
 
-function removeRoomLocal (roomKey, { navigateHome = false } = {}) {
+function removeRoomLocal (roomKey: string, { navigateHome = false } = {}) {
   state.rooms.delete(roomKey)
   state.messagesByRoom.delete(roomKey)
   state.seenSeqByRoom.delete(roomKey)
@@ -257,7 +256,7 @@ function removeRoomLocal (roomKey, { navigateHome = false } = {}) {
   renderServerList()
 }
 
-function handleRoomDisband (roomKey, msg) {
+function handleRoomDisband (roomKey: string, msg: ClientMessage) {
   const by = msg?.senderName || 'The owner'
   if (state.activeRoom === roomKey) {
     appAlert(`${by} disbanded this group.`, { title: 'Group disbanded' })
@@ -265,10 +264,17 @@ function handleRoomDisband (roomKey, msg) {
   removeRoomLocal(roomKey, { navigateHome: state.activeRoom === roomKey })
 }
 
-function selectRoom (keyHex) {
+function selectRoom (keyHex: string) {
+  if (state.activeRoom === keyHex && !state.activeDmKey) {
+    // Already on this room with no DM active – ensure UI is synced
+    renderServerList()
+    return
+  }
+
   state.activeRoom = keyHex
   state.activeDmKey = null
   state.activeSearchChannelId = null
+  state.activeThreadRootId = null
   const room = state.rooms.get(keyHex)
   if (!room) return
 
@@ -280,7 +286,14 @@ function selectRoom (keyHex) {
   dom.welcomeState.classList.add('hidden')
   dom.chatArea.classList.remove('hidden')
 
-  const textId = state.activeTextChannelByRoom.get(keyHex) || 'general'
+  // Validate active text channel exists; fall back to 'general'
+  const channels = state.channelsByRoom.get(keyHex) || { text: [{ id: 'general', name: 'general' }], voice: [] }
+  let textId = state.activeTextChannelByRoom.get(keyHex) || 'general'
+  if (!channels.text.some((c) => c.id === textId)) {
+    textId = channels.text[0]?.id || 'general'
+    state.activeTextChannelByRoom.set(keyHex, textId)
+  }
+
   const channel = getChannelById(keyHex, 'text', textId)
   dom.chatHeaderTitle.textContent = channel?.name || 'general'
   dom.chatHeaderDesc.textContent = textId === 'general'
@@ -302,6 +315,7 @@ function selectRoom (keyHex) {
   renderAdminPanel()
   renderFriendsHome()
   updateMemberList()
+  updateComposerAccess()
   updateSecurityStatus()
   updateHeaderActionVisibility()
   scrollToBottom()
@@ -329,19 +343,19 @@ function renderServerList () {
       <div class="unread-dot absolute top-0 right-0 w-2 h-2 bg-white rounded-full hidden"></div>
     `
 
-    div.querySelector('button').addEventListener('click', () => selectRoom(keyHex))
+    div.querySelector('button')!.addEventListener('click', () => selectRoom(keyHex))
     dom.serverList.appendChild(div)
   }
 }
 
-function markUnread (roomKey) {
-  const row = [...dom.serverList.children].find((n) => n.dataset.roomKey === roomKey)
+function markUnread (roomKey: string) {
+  const row = Array.from(dom.serverList.children).find((n) => (n as HTMLElement).dataset.roomKey === roomKey) as HTMLElement | undefined
   const dot = row?.querySelector('.unread-dot')
   if (dot) dot.classList.remove('hidden')
 }
 
-function clearUnread (roomKey) {
-  const row = [...dom.serverList.children].find((n) => n.dataset.roomKey === roomKey)
+function clearUnread (roomKey: string) {
+  const row = Array.from(dom.serverList.children).find((n) => (n as HTMLElement).dataset.roomKey === roomKey) as HTMLElement | undefined
   const dot = row?.querySelector('.unread-dot')
   if (dot) dot.classList.add('hidden')
 }
@@ -385,8 +399,9 @@ function updateRoomWelcomeBanner () {
     : `This is the start of #${channelName}.`
 }
 
-function appendMessage (msg) {
+function appendMessage (msg: ClientMessage) {
   if (state.searchResultsActive) return
+  if (!state.activeRoom) return
   const activeText = state.activeTextChannelByRoom.get(state.activeRoom) || 'general'
   if (!messageBelongsToTextChannel(msg, activeText)) return
   if (state.activeDmKey && msg.dmKey !== state.activeDmKey) return
@@ -395,15 +410,15 @@ function appendMessage (msg) {
 
   const visible = getVisibleMessagesForActiveTextChannel()
   const prev = getPreviousGroupableMessage(visible, visible.length - 2)
-  const el = createMessageEl(msg, prev?.sender, prev?.timestamp)
+  const el = createMessageEl(msg, prev?.sender || null, prev?.timestamp || 0)
   if (el) dom.messages.appendChild(el)
 }
 
-function isGroupableMessage (msg) {
+function isGroupableMessage (msg: ClientMessage) {
   return msg?.type === 'text' || msg?.type === 'file'
 }
 
-function getPreviousGroupableMessage (messages, startIndex) {
+function getPreviousGroupableMessage (messages: ClientMessage[], startIndex: number) {
   for (let index = startIndex; index >= 0; index--) {
     const candidate = messages[index]
     if (isGroupableMessage(candidate)) return candidate
@@ -411,7 +426,7 @@ function getPreviousGroupableMessage (messages, startIndex) {
   return null
 }
 
-function createMessageEl (msg, lastSender, lastTime) {
+function createMessageEl (msg: ClientMessage, lastSender: string | null, lastTime: number) {
   if (msg.type === 'system') return createSystemMessageEl(msg)
   if (msg.type === 'file') return createFileMessageEl(msg, lastSender, lastTime)
   if (msg.type === 'voice') return createVoiceMessageEl(msg)
@@ -419,7 +434,7 @@ function createMessageEl (msg, lastSender, lastTime) {
   return null
 }
 
-function getSenderAvatarMarkup (msg) {
+function getSenderAvatarMarkup (msg: ClientMessage) {
   const isSelf = msg.sender === state.identity?.publicKey
   const avatar = msg.senderAvatar || (isSelf ? state.profile.avatar : null)
   return avatar
@@ -427,7 +442,7 @@ function getSenderAvatarMarkup (msg) {
     : getDefaultAvatar(msg.senderName)
 }
 
-function createSystemMessageEl (msg) {
+function createSystemMessageEl (msg: ClientMessage) {
   if (msg.action === 'call-signal' || msg.action === 'call-start' || msg.action === 'call-join' || msg.action === 'call-end') return null
   if (msg.action === 'message-edit') return null
   if (msg.action === 'presence-set') return null
@@ -465,7 +480,7 @@ function createSystemMessageEl (msg) {
   return div
 }
 
-function createVoiceMessageEl (msg) {
+function createVoiceMessageEl (msg: ClientMessage) {
   const div = document.createElement('div')
   div.className = 'flex items-center gap-2 px-1 py-1 text-xs text-quibble-text-m fade-in'
   if (msg.action === 'offer') {
@@ -478,7 +493,7 @@ function createVoiceMessageEl (msg) {
   return div
 }
 
-function createFileMessageEl (msg, lastSender, lastTime) {
+function createFileMessageEl (msg: ClientMessage, lastSender: string | null, lastTime: number) {
   const grouped = msg.sender === lastSender && (msg.timestamp - lastTime) < 420000
   const wrapper = document.createElement('div')
   const reactionBar = renderReactionBar(msg)
@@ -520,7 +535,7 @@ function createFileMessageEl (msg, lastSender, lastTime) {
   }
 
   wrapper.querySelector('.download-btn')?.addEventListener('click', (ev) => {
-    const btn = ev.currentTarget
+    const btn = ev.currentTarget as HTMLElement
     send({
       type: 'download-file',
       roomKey: state.activeRoom,
@@ -531,13 +546,13 @@ function createFileMessageEl (msg, lastSender, lastTime) {
   })
 
   wrapper.querySelector('.pin-btn')?.addEventListener('click', (ev) => {
-    const id = ev.currentTarget.dataset.id
+    const id = (ev.currentTarget as HTMLElement).dataset.id
     if (!id || !state.activeRoom) return
     send({ type: 'pin-message', roomKey: state.activeRoom, channelId: state.activeTextChannelByRoom.get(state.activeRoom) || 'general', messageId: id })
   })
 
   wrapper.querySelector('.thread-btn')?.addEventListener('click', (ev) => {
-    const id = ev.currentTarget.dataset.id
+    const id = (ev.currentTarget as HTMLElement).dataset.id
     if (!id) return
     openThreadPanel(id)
   })
@@ -547,7 +562,7 @@ function createFileMessageEl (msg, lastSender, lastTime) {
   return wrapper
 }
 
-function createTextMessageEl (msg, lastSender, lastTime) {
+function createTextMessageEl (msg: ClientMessage, lastSender: string | null, lastTime: number) {
   const grouped = msg.sender === lastSender && (msg.timestamp - lastTime) < 420000
   const div = document.createElement('div')
   const reactionBar = renderReactionBar(msg)
@@ -578,7 +593,7 @@ function createTextMessageEl (msg, lastSender, lastTime) {
     div.innerHTML = `
       <span class="absolute left-4 top-1 text-[10px] text-quibble-text-m opacity-0 group-hover:opacity-100 w-[44px] text-right">${formatTimeShort(msg.timestamp)}</span>
       <div class="min-w-0 flex-1">
-        ${isEditing ? editField : `<div class="text-sm text-quibble-text-s leading-relaxed break-words">${formatContent(msg.text)}${editedBadge}</div>`}
+        ${isEditing ? editField : `<div class="text-sm text-quibble-text-s leading-relaxed break-words">${formatContent(msg.text || '')}${editedBadge}</div>`}
         ${isEditing ? '' : previews}
         ${isEditing ? '' : reactionBar}
       </div>
@@ -610,7 +625,7 @@ function createTextMessageEl (msg, lastSender, lastTime) {
         <span class="font-medium text-sm" style="color:${getNameColor(msg.sender)}">${esc(msg.senderName || 'Unknown')}</span>
         <span class="text-[11px] text-quibble-text-m">${formatDate(msg.timestamp)}</span>
       </div>
-      ${isEditing ? editField : `<div class="text-sm text-quibble-text-s leading-relaxed break-words">${formatContent(msg.text)}${editedBadge}</div>`}
+      ${isEditing ? editField : `<div class="text-sm text-quibble-text-s leading-relaxed break-words">${formatContent(msg.text || '')}${editedBadge}</div>`}
       ${isEditing ? '' : previews}
       ${isEditing ? '' : reactionBar}
       <div class="${isEditing ? 'hidden' : 'flex'} gap-1 mt-1">
@@ -634,8 +649,8 @@ function createTextMessageEl (msg, lastSender, lastTime) {
   return div
 }
 
-function wireInlineEditEvents (container, msg) {
-  const input = container.querySelector(`[data-inline-edit-input="${esc(msg.id || '')}"]`)
+function wireInlineEditEvents (container: HTMLElement, msg: ClientMessage) {
+  const input = container.querySelector(`[data-inline-edit-input="${esc(msg.id || '')}"]`) as HTMLInputElement | null
   if (!input) return
 
   const save = () => submitInlineEdit(msg, input.value)
@@ -644,7 +659,7 @@ function wireInlineEditEvents (container, msg) {
     inlineEditDraft = input.value
   })
 
-  input.addEventListener('keydown', (event) => {
+  input.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       save()
@@ -660,7 +675,7 @@ function wireInlineEditEvents (container, msg) {
   container.querySelector('.cancel-edit-btn')?.addEventListener('click', cancelInlineEdit)
 }
 
-function beginInlineEdit (msg) {
+function beginInlineEdit (msg: ClientMessage) {
   if (!msg?.id) return
   inlineEditMessageId = msg.id
   inlineEditDraft = String(msg.text || '')
@@ -668,7 +683,7 @@ function beginInlineEdit (msg) {
 
   requestAnimationFrame(() => {
     const safeId = CSS?.escape ? CSS.escape(String(msg.id)) : String(msg.id)
-    const input = document.querySelector(`[data-inline-edit-input="${safeId}"]`)
+    const input = document.querySelector(`[data-inline-edit-input="${safeId}"]`) as HTMLInputElement
     if (!input) return
     input.focus()
     input.setSelectionRange(input.value.length, input.value.length)
@@ -681,7 +696,7 @@ function cancelInlineEdit () {
   renderMessages()
 }
 
-function submitInlineEdit (msg, nextValue) {
+function submitInlineEdit (msg: ClientMessage, nextValue: string) {
   if (!msg?.id || !state.activeRoom) return
   const current = String(msg.text || '')
   const text = String(nextValue || '').trim()
@@ -702,7 +717,7 @@ function submitInlineEdit (msg, nextValue) {
 
 // Message input / files / emoji
 
-dom.messageInput.addEventListener('keydown', (e) => {
+dom.messageInput.addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     sendMessage()
@@ -753,7 +768,7 @@ dom.messagesScroll?.addEventListener('scroll', () => {
   const cursor = state.historyCursorByRoom.get(state.activeRoom)
   if (cursor == null) return
 
-  requestRoomHistory(state.activeRoom, { count: 100, beforeSeq: cursor })
+  requestRoomHistory(state.activeRoom, { count: 100, beforeSeq: cursor as number })
 })
 
 function sendMessage () {
@@ -781,8 +796,8 @@ function sendMessage () {
 }
 
 dom.btnAttachFile.addEventListener('click', () => dom.fileInput.click())
-dom.fileInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0]
+dom.fileInput.addEventListener('change', async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0]
   if (!file || !state.activeRoom) return
 
   const dataBase64 = await fileToBase64(file)
@@ -806,7 +821,7 @@ dom.btnEmoji.addEventListener('click', () => {
   renderEmojiPicker()
 })
 
-function rebuildRoomEmojiMap (roomKey) {
+function rebuildRoomEmojiMap (roomKey: string) {
   const map = new Map()
   const msgs = state.messagesByRoom.get(roomKey) || []
 
@@ -822,13 +837,13 @@ function rebuildRoomEmojiMap (roomKey) {
   state.roomEmojis.set(roomKey, map)
 }
 
-let cachedSystemEmojiList = null
+let cachedSystemEmojiList: string[] | null = null
 function getSystemEmojiList () {
   if (Array.isArray(cachedSystemEmojiList) && cachedSystemEmojiList.length > 0) return cachedSystemEmojiList
 
   const list = [...UNICODE_EMOJIS]
   const seen = new Set(list)
-  const pushUnique = (emoji) => {
+  const pushUnique = (emoji: string) => {
     if (!emoji || seen.has(emoji)) return
     seen.add(emoji)
     list.push(emoji)
@@ -856,7 +871,7 @@ function renderEmojiPicker () {
   if (!dom.emojiGrid || !dom.customEmojiGrid) return
 
   dom.customEmojiGrid.innerHTML = ''
-  const custom = state.roomEmojis.get(state.activeRoom) || new Map()
+  const custom = state.roomEmojis.get(state.activeRoom!) || new Map()
   for (const [name, src] of custom) {
     const b = document.createElement('button')
     b.className = 'h-8 w-8 rounded hover:bg-quibble-hover flex items-center justify-center'

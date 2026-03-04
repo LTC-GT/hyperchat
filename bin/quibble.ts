@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// @ts-nocheck
 
 /**
  * Quibble – P2P CLI chat.
@@ -32,6 +31,7 @@ import { loadIdentity, setName } from '../lib/identity.js'
 import { Quibble } from '../lib/quibble.js'
 import { textMsg, systemMsg } from '../lib/messages.js'
 import { sendFile, recvFile } from '../lib/file-transfer.js'
+import type { Room } from '../lib/room.js'
 
 const args = process.argv.slice(2)
 const cmd = args[0]
@@ -69,12 +69,12 @@ if (cmd === 'name') {
 // ── Room commands ───
 
 const identity = await loadIdentity()
-const storageDir = path.join(identity.dir, 'storage')
+const storageDir = path.join(identity.dir!, 'storage')
 
 const quibble = new Quibble({ storage: storageDir, identity })
 await quibble.ready()
 
-let room
+let room: Room
 
 if (cmd === 'create') {
   room = await quibble.createRoom()
@@ -85,7 +85,7 @@ if (cmd === 'create') {
   const target = args[1]
   if (!target) { console.error('Usage: quibble join <link|hexKey>'); process.exit(1) }
   console.log(chalk.yellow('Joining room…'))
-  room = await quibble.joinRoom(target)
+  room = (await quibble.joinRoom(target))!
   console.log(chalk.green.bold('✦ Joined room'))
   console.log(`  ${chalk.bold('Link:')} ${room.inviteLink}\n`)
 } else {
@@ -125,7 +125,7 @@ rl.on('line', async (line) => {
       await room.append(msg)
     }
   } catch (err) {
-    console.error(chalk.red(`Error: ${err.message}`))
+    console.error(chalk.red(`Error: ${(err as Error).message}`))
   }
 
   rl.prompt()
@@ -146,7 +146,7 @@ process.on('SIGINT', async () => {
 
 // ── Command handler ───
 
-async function handleCommand (input) {
+async function handleCommand (input: string) {
   const parts = input.slice(1).split(/\s+/)
   const cmd = parts[0]
 
@@ -201,10 +201,10 @@ async function handleCommand (input) {
 
     case 'info': {
       console.log(`  ${chalk.bold('Link:')}    ${room.inviteLink}`)
-      console.log(`  ${chalk.bold('Key:')}     ${b4a.toString(room.key, 'hex')}`)
+      console.log(`  ${chalk.bold('Key:')}     ${b4a.toString(room.key!, 'hex')}`)
       console.log(`  ${chalk.bold('Writer:')} ${room.writable}`)
       console.log(`  ${chalk.bold('Indexer:')} ${room.isIndexer}`)
-      console.log(`  ${chalk.bold('View:')}    ${room.base.view?.length || 0} messages`)
+      console.log(`  ${chalk.bold('View:')}    ${room.base!.view?.length || 0} messages`)
       break
     }
 
@@ -221,7 +221,7 @@ async function handleCommand (input) {
 
 // ── Rendering ───
 
-function renderMessage (msg) {
+function renderMessage (msg: RoomMessage) {
   const time = new Date(msg.timestamp).toLocaleTimeString()
   const who = msg.senderName || msg.sender?.slice(0, 8) || '???'
 
@@ -246,7 +246,7 @@ function renderMessage (msg) {
   }
 }
 
-function fmtSize (bytes) {
+function fmtSize (bytes: number) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
