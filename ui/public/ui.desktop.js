@@ -1,3 +1,4 @@
+// @ts-nocheck
 (() => {
-  document.body.classList.add('desktop-ui')
-})()
+    document.body.classList.add('desktop-ui');
+})();

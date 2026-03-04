@@ -57,6 +57,9 @@ importers:
       '@tailwindcss/cli':
         specifier: 4.2.0
         version: 4.2.0
+      '@types/node':
+        specifier: ^24.3.1
+        version: 24.11.0
       autoprefixer:
         specifier: ^10.4.24
         version: 10.4.24(postcss@8.5.6)
@@ -66,6 +69,9 @@ importers:
       tailwindcss:
         specifier: ^4.2.0
         version: 4.2.0
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
 packages:
 
@@ -262,6 +268,9 @@ packages:
   '@tailwindcss/oxide@4.2.0':
     resolution: {integrity: sha512-AZqQzADaj742oqn2xjl5JbIOzZB/DGCYF/7bpvhA8KvjUj9HJkag6bBuwZvH1ps6dfgxNHyuJVlzSr2VpMgdTQ==}
     engines: {node: '>= 20'}
+
+  '@types/node@24.11.0':
+    resolution: {integrity: sha512-fPxQqz4VTgPI/IQ+lj9r0h+fDR66bzoeMGHp8ASee+32OSGIkeASsoZuJixsQoVef1QJbeubcPBxKk22QVoWdw==}
 
   adaptive-timeout@1.0.1:
     resolution: {integrity: sha512-+seGiBtHqbnyZ0Quq/ZGxxwP66153WBABawa07/QeyuPFzbduPBjiGQAyCiriiLDzt3dkbMBskSlfqtRwblK8Q==}
@@ -732,9 +741,17 @@ packages:
   tiny-buffer-map@1.1.1:
     resolution: {integrity: sha512-C1eDw6ks9CmkDbWVCPHobuixPTkxGa7IDERlaVk98dv4tOUdz42o3haHBr0uhNxbj0gczBTVIyS2uQsu+1vc2Q==}
 
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   udx-native@1.19.2:
     resolution: {integrity: sha512-RNYh+UhfryCsF5hE2ZOuIqcZ+qdipXK3UsarwxWJwsUQZFE3ybwz0mPjwb5ev1PMBcjFahWiepS/q0wwL51c2g==}
     engines: {bare: '>=1.17.4'}
+
+  undici-types@7.16.0:
+    resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
   unordered-set@2.0.1:
     resolution: {integrity: sha512-eUmNTPzdx+q/WvOHW0bgGYLWvWHNT3PTKEQLg0MAQhc0AHASHVHoP/9YytYd4RBVariqno/mEUhVZN98CmD7bg==}
@@ -942,6 +959,10 @@ snapshots:
       '@tailwindcss/oxide-wasm32-wasi': 4.2.0
       '@tailwindcss/oxide-win32-arm64-msvc': 4.2.0
       '@tailwindcss/oxide-win32-x64-msvc': 4.2.0
+
+  '@types/node@24.11.0':
+    dependencies:
+      undici-types: 7.16.0
 
   adaptive-timeout@1.0.1:
     dependencies:
@@ -1693,6 +1714,8 @@ snapshots:
     transitivePeerDependencies:
       - react-native-b4a
 
+  typescript@5.9.3: {}
+
   udx-native@1.19.2(bare-url@2.3.2):
     dependencies:
       b4a: 1.8.0
@@ -1703,6 +1726,8 @@ snapshots:
       - bare-abort-controller
       - bare-url
       - react-native-b4a
+
+  undici-types@7.16.0: {}
 
   unordered-set@2.0.1: {}
 

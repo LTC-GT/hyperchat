@@ -4,6 +4,11 @@ node_modules/
 # Build outputs
 dist/
 build/
+bin/*.js
+lib/*.js
+test/*.js
+ui/*.js
+ui/public/*.js
 
 # Logs
 *.log
