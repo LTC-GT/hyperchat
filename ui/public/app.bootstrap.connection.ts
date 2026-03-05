@@ -2,11 +2,16 @@ const CONNECTION_GATE_TICK_MS = 1000
 const CONNECTION_GATE_SUCCESS_MS = 500
 const CONNECTION_GATE_MAX_CONNECTING_PROGRESS = 94
 const WS_STARTUP_LOG_EVERY = 3
+const BOOT_REFETCH_DELAY_MS = 3500
+const BOOT_REFETCH_SECOND_DELAY_MS = 10000
 
 let connectionGateTickTimer: ReturnType<typeof setInterval> | null = null
 let connectionGateHideTimer: ReturnType<typeof setTimeout> | null = null
 let connectionGateConnectingStartedAt = 0
 let connectionGateWasBlocked = true
+let bootRefetchTimer: ReturnType<typeof setTimeout> | null = null
+let bootRefetchSecondTimer: ReturnType<typeof setTimeout> | null = null
+let bootRefetchDone = false
 
 function clearConnectionGateTickTimer () {
   if (!connectionGateTickTimer) return
@@ -18,6 +23,30 @@ function clearConnectionGateHideTimer () {
   if (!connectionGateHideTimer) return
   clearTimeout(connectionGateHideTimer)
   connectionGateHideTimer = null
+}
+
+/**
+ * After the boot gate clears, re-request history for all rooms after a delay.
+ * P2P replication may still be delivering older messages that weren't in the
+ * Autobase linearized view when the initial history was fetched.  A second
+ * pass a few seconds later catches them.
+ */
+function scheduleBootRefetch () {
+  if (bootRefetchTimer) clearTimeout(bootRefetchTimer)
+  if (bootRefetchSecondTimer) clearTimeout(bootRefetchSecondTimer)
+
+  bootRefetchTimer = setTimeout(() => {
+    for (const roomKey of state.rooms.keys()) {
+      requestRoomHistory(roomKey, { count: 100 })
+    }
+  }, BOOT_REFETCH_DELAY_MS)
+
+  // A second, later re-fetch for rooms with slower peer replication
+  bootRefetchSecondTimer = setTimeout(() => {
+    for (const roomKey of state.rooms.keys()) {
+      requestRoomHistory(roomKey, { count: 100 })
+    }
+  }, BOOT_REFETCH_SECOND_DELAY_MS)
 }
 
 function setConnectionGateProgress (progress: number) {
@@ -102,6 +131,13 @@ function updateConnectionGate () {
   if (!blocked) {
     clearConnectionGateTickTimer()
     connectionGateConnectingStartedAt = 0
+
+    // Schedule delayed re-fetches after boot to catch P2P-replicated messages
+    // that may not have been in the Autobase view during the first history load.
+    if (!bootRefetchDone) {
+      bootRefetchDone = true
+      scheduleBootRefetch()
+    }
 
     if (connectionGateWasBlocked && !dom.connectionGate.classList.contains('hidden')) {
       clearConnectionGateHideTimer()

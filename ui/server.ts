@@ -33,6 +33,21 @@ import {
   findOpenPort
 } from './server-room-helpers.js'
 
+/**
+ * Wait for a room to become writable (writer access to propagate via Autobase).
+ * Polls base.update() up to `maxAttempts` times with `intervalMs` between each.
+ * Returns true if the room became writable, false if it timed out.
+ */
+async function waitForRoomWritable (room: Room, { maxAttempts = 12, intervalMs = 500 } = {}) {
+  for (let i = 0; i < maxAttempts; i++) {
+    if (room.writable) return true
+    try { await room.base?.update() } catch {}
+    if (room.writable) return true
+    await new Promise(r => setTimeout(r, intervalMs))
+  }
+  return Boolean(room.writable)
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = join(__dirname, '..', '..')
 const PUBLIC_COMPILED = join(__dirname, 'public')
@@ -667,6 +682,25 @@ wss.on('connection', async (ws) => {
           const room = quibble.rooms.get(msg.roomKey)
           if (!room) break
 
+          // Wait for writer access if not yet propagated (non-creator peers)
+          if (!room.writable) {
+            const became = await waitForRoomWritable(room)
+            if (!became) {
+              ws.send(JSON.stringify({
+                type: 'room-permission',
+                roomKey: msg.roomKey,
+                writable: false
+              }))
+              ws.send(JSON.stringify({ type: 'error', code: 'room-not-writable', roomKey: msg.roomKey, message: 'This room is read-only on this device. Writer access has not propagated yet — please try again in a moment.' }))
+              break
+            }
+            ws.send(JSON.stringify({
+              type: 'room-permission',
+              roomKey: msg.roomKey,
+              writable: true
+            }))
+          }
+
           const channelId = msg.channelId || 'general'
           const dmKey = msg.dmKey ? String(msg.dmKey) : null
           const senderHex = b4a.toString(identity.publicKey, 'hex')
@@ -1225,6 +1259,26 @@ wss.on('connection', async (ws) => {
           const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.callId || !msg.mode) break
 
+          // Wait for writer access if not yet propagated (non-creator peers)
+          if (!room.writable) {
+            const became = await waitForRoomWritable(room)
+            if (!became) {
+              ws.send(JSON.stringify({
+                type: 'room-permission',
+                roomKey: msg.roomKey,
+                writable: false
+              }))
+              ws.send(JSON.stringify({ type: 'error', code: 'room-not-writable', roomKey: msg.roomKey, message: 'Writer access has not propagated yet. Please try again in a moment.' }))
+              break
+            }
+            // Notify client that we're now writable
+            ws.send(JSON.stringify({
+              type: 'room-permission',
+              roomKey: msg.roomKey,
+              writable: true
+            }))
+          }
+
           const channelId = msg.channelId || 'general'
           const dmKey = msg.dmKey ? String(msg.dmKey) : null
           const scope = String(msg.scope || (dmKey ? 'dm' : 'text'))
@@ -1272,6 +1326,25 @@ wss.on('connection', async (ws) => {
         case 'join-call': {
           const room = quibble.rooms.get(msg.roomKey)
           if (!room || !msg.callId) break
+
+          // Wait for writer access if not yet propagated (non-creator peers)
+          if (!room.writable) {
+            const became = await waitForRoomWritable(room)
+            if (!became) {
+              ws.send(JSON.stringify({
+                type: 'room-permission',
+                roomKey: msg.roomKey,
+                writable: false
+              }))
+              ws.send(JSON.stringify({ type: 'error', code: 'room-not-writable', roomKey: msg.roomKey, message: 'Writer access has not propagated yet. Please try again in a moment.' }))
+              break
+            }
+            ws.send(JSON.stringify({
+              type: 'room-permission',
+              roomKey: msg.roomKey,
+              writable: true
+            }))
+          }
 
           const channelId = msg.channelId || 'general'
           const dmKey = msg.dmKey ? String(msg.dmKey) : null
