@@ -138,6 +138,12 @@ echo ""
 export RUST_LOG="${RUST_LOG:-debug}"
 export RUST_BACKTRACE="${RUST_BACKTRACE:-1}"
 
+# Work around NVIDIA GBM/DMA-BUF failures on Linux.
+# WebKitGTK tries hardware-accelerated DMA-BUF rendering which breaks
+# on many NVIDIA driver versions ("Failed to create GBM buffer").
+# This forces a software rendering fallback.
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+
 # lib.rs uses CARGO_MANIFEST_DIR to find the project root
 export CARGO_MANIFEST_DIR="$TAURI_DIR"
 

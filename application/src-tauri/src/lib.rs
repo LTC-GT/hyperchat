@@ -7,6 +7,19 @@ use tauri::{
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+/// Apply platform-specific workarounds before Tauri starts.
+fn apply_platform_workarounds() {
+    // On Linux, WebKitGTK's DMA-BUF renderer fails on many NVIDIA GPUs with
+    // "Failed to create GBM buffer of size WxH: Invalid argument".
+    // Setting this env var forces a software rendering fallback.
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+}
+
 /// Holds the spawned Node.js server process so we can kill it on exit.
 struct ServerProcess(Mutex<Option<Child>>);
 
@@ -65,6 +78,8 @@ fn wait_for_server(timeout_secs: u64) -> bool {
 }
 
 pub fn run() {
+    apply_platform_workarounds();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
