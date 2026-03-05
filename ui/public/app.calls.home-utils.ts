@@ -565,20 +565,20 @@ for (const modal of [dom.roomModal, dom.inviteModal]) {
 }
 
 // ─── Friend Link sharing ───
-const FRIEND_LINK_PREFIX = 'quibble://quibble/'
+const FRIEND_LINK_PREFIX = 'pear://quibble/'
 
 function generateFriendLink () {
-  if (!state.identity?.publicKey) return null
-  return `${FRIEND_LINK_PREFIX}${state.identity.publicKey}`
+  return (state as any).friendLink || null
 }
 
 function parseFriendLink (raw: string) {
   const text = String(raw || '').trim()
+  // Accept pear://quibble/... format (z32-encoded invite link)
   if (text.startsWith(FRIEND_LINK_PREFIX)) {
-    const key = text.slice(FRIEND_LINK_PREFIX.length).trim().toLowerCase()
-    if (/^[a-f0-9]{64}$/.test(key)) return key
+    const encoded = text.slice(FRIEND_LINK_PREFIX.length).trim()
+    if (encoded.length > 0) return text // return the full link for joining
   }
-  // Also accept bare hex key
+  // Also accept bare hex key (legacy)
   const bare = text.toLowerCase()
   if (/^[a-f0-9]{64}$/.test(bare)) return bare
   return null
@@ -587,7 +587,7 @@ function parseFriendLink (raw: string) {
 dom.btnCopyFriendLink?.addEventListener('click', async () => {
   const link = generateFriendLink()
   if (!link) {
-    appAlert('Identity not loaded yet.', { title: 'Error' })
+    appAlert('Friend link not available yet. Please wait for P2P connection.', { title: 'Error' })
     return
   }
   try {
@@ -606,22 +606,38 @@ dom.btnPasteFriendLink?.addEventListener('click', async () => {
   try {
     text = await navigator.clipboard.readText()
   } catch {
-    const manualInput = await appPrompt('Paste the friend link or public key:', {
+    const manualInput = await appPrompt('Paste the friend link:', {
       title: 'Add Friend',
-      placeholder: 'quibble://quibble/<64-char hex> or 64-char hex key',
+      placeholder: 'pear://quibble/... invite link',
       confirmText: 'Add Friend',
       cancelText: 'Cancel'
     })
     if (manualInput == null) return
     text = String(manualInput || '')
   }
-  const friendKey = parseFriendLink(text)
-  if (!friendKey) {
-    appAlert('Invalid friend link. Expected quibble://quibble/<64-char hex> or a 64-character hex key.', { title: 'Invalid Link' })
+  const parsed = parseFriendLink(text)
+  if (!parsed) {
+    appAlert('Invalid friend link. Expected a pear://quibble/... invite link.', { title: 'Invalid Link' })
     return
   }
-  if (friendKey === state.identity?.publicKey) {
+
+  // Check if it's our own friend link
+  if (parsed === (state as any).friendLink) {
     appAlert("That's your own friend link!", { title: 'Oops' })
+    return
+  }
+
+  // If it's a pear:// link, join the friend room (no active room required)
+  if (parsed.startsWith('pear://quibble/')) {
+    send({ type: 'join-friend-room', link: parsed })
+    appAlert('Joining friend room and sending request... They will see it once they sync.', { title: 'Request Sent' })
+    return
+  }
+
+  // Legacy hex key handling - needs an active room
+  const friendKey = parsed
+  if (friendKey === state.identity?.publicKey) {
+    appAlert("That's your own public key!", { title: 'Oops' })
     return
   }
   if (state.friends.has(friendKey)) {
@@ -630,13 +646,13 @@ dom.btnPasteFriendLink?.addEventListener('click', async () => {
     return
   }
   if (!state.activeRoom) {
-    appAlert('Join a room first so the friend request can be sent through it.', { title: 'No Active Room' })
+    appAlert('Legacy hex keys require an active room. Use a pear://quibble/ link instead.', { title: 'No Active Room' })
     return
   }
   send({ type: 'friend-request', roomKey: state.activeRoom, targetKey: friendKey, targetName: '' })
   state.friendRequests.set(friendKey, { name: friendKey.slice(0, 8), roomKey: state.activeRoom, outgoing: true })
   renderFriendsHome()
-  appAlert('Friend request sent! They will see it once they sync this room.', { title: 'Request Sent' })
+  appAlert('Friend request sent!', { title: 'Request Sent' })
 })
 
 dom.app.classList.remove('hidden')

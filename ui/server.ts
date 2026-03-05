@@ -397,6 +397,23 @@ async function restorePersistedRooms () {
 
 await restorePersistedRooms()
 
+// ─── Personal friend room (used for friend links) ───
+let friendRoomLink: string | null = null
+{
+  const prof = loadProfile()
+  const existingKey = prof.friendRoomKey
+  if (existingKey && quibble.rooms.has(existingKey)) {
+    friendRoomLink = quibble.rooms.get(existingKey)!.inviteLink!
+  } else {
+    // Create a new personal friend room
+    const friendRoom = (await quibble.createRoom())!
+    const friendKeyHex = b4a.toString(friendRoom.key!, 'hex')
+    persistRoom(friendKeyHex, friendRoom.inviteLink!)
+    saveProfile({ friendRoomKey: friendKeyHex })
+    friendRoomLink = friendRoom.inviteLink!
+  }
+}
+
 // Signal that the P2P layer is fully ready.
 _resolveP2PReady!()
 console.log(`  Identity: ${identity.name} (${b4a.toString(identity.publicKey!, 'hex').slice(0, 16)}…)`)
@@ -432,6 +449,14 @@ wss.on('connection', async (ws) => {
     presenceStatus: identity.status,
     setupDone: profile.setupDone
   }))
+
+  // Send personal friend link
+  if (friendRoomLink) {
+    ws.send(JSON.stringify({
+      type: 'friend-link',
+      link: friendRoomLink
+    }))
+  }
 
   // Send existing rooms
   for (const [keyHex, room] of quibble.rooms) {
@@ -903,6 +928,60 @@ wss.on('connection', async (ws) => {
             fromKey: b4a.toString(identity.publicKey, 'hex')
           }, identity)
           await room.append(acceptMsg)
+          break
+        }
+
+        case 'get-friend-link': {
+          if (friendRoomLink) {
+            ws.send(JSON.stringify({ type: 'friend-link', link: friendRoomLink }))
+          } else {
+            ws.send(JSON.stringify({ type: 'error', message: 'Friend link not available yet.' }))
+          }
+          break
+        }
+
+        case 'join-friend-room': {
+          if (!msg.link) break
+          try {
+            const room = (await quibble.joinRoom(msg.link))!
+            const keyHex = b4a.toString(room.key!, 'hex')
+            persistRoom(keyHex, room.inviteLink!)
+
+            ws.send(JSON.stringify({
+              type: 'friend-room-joined',
+              roomKey: keyHex,
+              link: room.inviteLink!,
+              writable: room.writable
+            }))
+
+            // Announce join
+            try {
+              const joinMsg = systemMsg('join', { name: identity.name }, identity)
+              await room.append(joinMsg)
+            } catch {}
+
+            // Auto-send friend request through this room
+            if (msg.targetKey) {
+              try {
+                const reqMsg = systemMsg('friend-request', {
+                  targetKey: String(msg.targetKey),
+                  targetName: '',
+                  fromKey: b4a.toString(identity.publicKey, 'hex')
+                }, identity)
+                await room.append(reqMsg)
+              } catch {}
+            }
+
+            ws.send(JSON.stringify({
+              type: 'room-permission',
+              roomKey: keyHex,
+              writable: room.writable
+            }))
+
+            startWatching(room, keyHex, ws)
+          } catch (err) {
+            ws.send(JSON.stringify({ type: 'error', message: `Failed to join friend room: ${(err as Error).message}` }))
+          }
           break
         }
 

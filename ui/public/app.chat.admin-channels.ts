@@ -140,14 +140,14 @@ function updateHeaderActionVisibility () {
   const showSecurityStatus = inRoom && !inDm
 
   if (dom.channelSearch) {
-    dom.channelSearch.disabled = !inRoom
+    dom.channelSearch.disabled = false
     dom.channelSearch.placeholder = inDm
       ? 'Search DMs'
       : inRoom
-        ? 'Search mentions in text channels'
-        : 'Search'
+        ? 'Search messages'
+        : 'Search all messages'
   }
-  dom.btnChannelSearchSubmit?.classList.toggle('hidden', !inRoom)
+  dom.btnChannelSearchSubmit?.classList.toggle('hidden', false)
 
   dom.btnVoice?.classList.toggle('hidden', !canCallFromHeader || hasLiveCall)
   dom.btnVideoCall?.classList.toggle('hidden', !canCallFromHeader || hasLiveCall)
@@ -174,7 +174,6 @@ function updateHeaderActionVisibility () {
 
   if (!inRoom) {
     hideSearchDropdown()
-    clearSearchResultsView({ clearInput: true })
   }
 
   if (typeof refreshCallControlsMenu === 'function') refreshCallControlsMenu()
@@ -195,31 +194,78 @@ function clearSearchResultsView ({ clearInput = false } = {}) {
   if (dom.searchResultsView) dom.searchResultsView.innerHTML = ''
   dom.messagesScroll?.classList.remove('hidden')
   dom.messageComposer?.classList.remove('hidden')
+  // If we're on the home page (no active room), restore welcome state
+  if (!state.activeRoom) {
+    dom.welcomeState?.classList.remove('hidden')
+    dom.chatArea?.classList.add('hidden')
+  }
 }
 
-function showSearchResultsView ({ title, subtitle, rows }: { title: string; subtitle: string; rows: { meta: string; text: string }[] }) {
-  if (!dom.searchResultsView || !dom.messagesScroll) return
+function showSearchResultsView ({ title, subtitle, rows }: { title: string; subtitle: string; rows: { meta: string; text: string; sender?: string; senderName?: string; timestamp?: number; channelName?: string; roomKey?: string; roomName?: string }[] }) {
+  if (!dom.searchResultsView) return
   state.searchResultsActive = true
-  dom.messagesScroll.classList.add('hidden')
+
+  // If we're on the home page, show the chatArea for results
+  if (!state.activeRoom) {
+    dom.welcomeState?.classList.add('hidden')
+    dom.chatArea?.classList.remove('hidden')
+  }
+
+  dom.messagesScroll?.classList.add('hidden')
   dom.messageComposer?.classList.add('hidden')
   dom.searchResultsView.classList.remove('hidden')
 
   const body = rows.length
-    ? rows.map((row: { meta: string; text: string }) => `
-      <div class="bg-quibble-serverbar rounded px-3 py-2 mb-2">
-        <div class="text-xs text-quibble-text-m mb-1">${esc(row.meta)}</div>
-        <div class="text-sm text-quibble-text">${formatContent(row.text || '')}</div>
-      </div>
-    `).join('')
-    : '<div class="text-sm text-quibble-text-m">No results found.</div>'
+    ? rows.slice(0, 100).map((row) => {
+      const senderName = row.senderName || 'Unknown'
+      const sender = row.sender || ''
+      const nameColor = typeof getNameColor === 'function' ? getNameColor(sender) : '#8caaee'
+      const avatar = typeof getDefaultAvatar === 'function' ? getDefaultAvatar(senderName) : senderName.charAt(0).toUpperCase()
+      const time = row.timestamp ? formatDate(row.timestamp) : ''
+      const channelLabel = row.roomName
+        ? `${esc(row.roomName)} › #${esc(row.channelName || 'general')}`
+        : row.channelName ? `#${esc(row.channelName)}` : ''
+      const urlPreviews = typeof renderUrlPreviews === 'function' ? renderUrlPreviews({ text: row.text } as any) : ''
+
+      return `
+        <div class="group flex gap-3 px-4 py-3 hover:bg-quibble-hover/50 rounded-lg transition-colors">
+          <div class="flex-shrink-0 w-10 h-10 rounded-full bg-quibble-blurple flex items-center justify-center text-sm font-bold">
+            ${avatar}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2 mb-0.5">
+              <span class="font-semibold text-sm" style="color: ${nameColor}">${esc(senderName)}</span>
+              <span class="text-[11px] text-quibble-text-m">${esc(time)}</span>
+            </div>
+            ${channelLabel ? `<div class="text-[11px] text-quibble-text-m mb-1">${channelLabel}</div>` : ''}
+            <div class="text-sm text-quibble-text break-words">${formatContent(row.text || '')}</div>
+            ${urlPreviews}
+          </div>
+        </div>
+      `
+    }).join('<div class="border-b border-quibble-divider/30 mx-4"></div>')
+    : '<div class="flex flex-col items-center justify-center py-16 text-quibble-text-m"><svg class="w-12 h-12 mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-4.35-4.35m1.35-4.65a6 6 0 11-12 0 6 6 0 0112 0z"/></svg><p class="text-sm font-medium">No results found</p><p class="text-xs mt-1">Try a different search term</p></div>'
 
   dom.searchResultsView.innerHTML = `
-    <div class="mb-4">
-      <h3 class="text-lg font-semibold">${esc(title)}</h3>
-      <p class="text-xs text-quibble-text-m">${esc(subtitle)}</p>
+    <div class="flex items-center justify-between mb-4 px-4 pt-2">
+      <div>
+        <h3 class="text-base font-semibold text-quibble-text">${esc(title)}</h3>
+        <p class="text-xs text-quibble-text-m mt-0.5">${esc(subtitle)} — ${rows.length} result${rows.length === 1 ? '' : 's'}</p>
+      </div>
+      <button id="btnCloseSearchResults" class="p-1.5 rounded hover:bg-quibble-hover text-quibble-text-m hover:text-quibble-text transition-colors" title="Close Search">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
     </div>
-    ${body}
+    <div class="space-y-0">
+      ${body}
+    </div>
   `
+
+  dom.searchResultsView.querySelector('#btnCloseSearchResults')?.addEventListener('click', () => {
+    clearSearchResultsView({ clearInput: true })
+  })
 }
 
 function getActiveDmSearchMatches (query: string) {
@@ -231,7 +277,11 @@ function getActiveDmSearchMatches (query: string) {
     .filter((msg) => String(msg.text || '').toLowerCase().includes(q))
     .map((msg) => ({
       text: msg.text || '',
-      meta: `${msg.senderName || 'Unknown'} • ${formatDate(msg.timestamp)}`
+      meta: `${msg.senderName || 'Unknown'} • ${formatDate(msg.timestamp)}`,
+      sender: msg.sender || '',
+      senderName: msg.senderName || 'Unknown',
+      timestamp: msg.timestamp || 0,
+      channelName: 'DM'
     }))
 }
 
@@ -251,9 +301,48 @@ function getActiveServerSearchMatches (query: string) {
       const channelName = getChannelById(activeRoom, 'text', channelId)?.name || channelId
       return {
         text: msg.text || '',
-        meta: `#${channelName} • ${msg.senderName || 'Unknown'} • ${formatDate(msg.timestamp)}`
+        meta: `#${channelName} • ${msg.senderName || 'Unknown'} • ${formatDate(msg.timestamp)}`,
+        sender: msg.sender || '',
+        senderName: msg.senderName || 'Unknown',
+        timestamp: msg.timestamp || 0,
+        channelName,
+        roomKey: activeRoom
       }
     })
+}
+
+function getGlobalSearchMatches (query: string) {
+  const q = query.toLowerCase()
+  const results: { text: string; meta: string; sender: string; senderName: string; timestamp: number; channelName: string; roomKey: string; roomName: string }[] = []
+
+  for (const [roomKey, roomMsgs] of state.messagesByRoom) {
+    const roomInfo = state.rooms.get(roomKey)
+    const roomName = (roomInfo as any)?.name || roomKey.slice(0, 8)
+
+    for (const msg of roomMsgs) {
+      if (!msg || msg.type !== 'text' || msg.threadRootId) continue
+      const text = String(msg.text || '').toLowerCase()
+      if (!text.includes(q)) continue
+
+      const channelId = msg.channelId || 'general'
+      const channelName = msg.dmKey
+        ? 'DM'
+        : (getChannelById(roomKey, 'text', channelId)?.name || channelId)
+
+      results.push({
+        text: msg.text || '',
+        meta: `${roomName} • #${channelName} • ${msg.senderName || 'Unknown'} • ${formatDate(msg.timestamp)}`,
+        sender: msg.sender || '',
+        senderName: msg.senderName || 'Unknown',
+        timestamp: msg.timestamp || 0,
+        channelName,
+        roomKey,
+        roomName
+      })
+    }
+  }
+
+  return results.sort((a, b) => b.timestamp - a.timestamp)
 }
 
 function renderServerSearchDropdown (query: string) {
@@ -298,12 +387,25 @@ function renderServerSearchDropdown (query: string) {
 
 function runHeaderSearch () {
   const query = String(dom.channelSearch?.value || '').trim()
-  if (!state.activeRoom || !query) {
+  if (!query) {
     clearSearchResultsView()
     return
   }
 
   hideSearchDropdown()
+
+  // Global search (no active room - searching from home page)
+  if (!state.activeRoom) {
+    const results = getGlobalSearchMatches(query)
+    dom.chatHeaderTitle.textContent = 'Search Results'
+    dom.chatHeaderDesc.textContent = `"${query}"`
+    showSearchResultsView({
+      title: 'Search Results',
+      subtitle: `Searching all rooms for "${query}"`,
+      rows: results
+    })
+    return
+  }
 
   if (state.activeDmKey) {
     const results = getActiveDmSearchMatches(query)
@@ -311,7 +413,7 @@ function runHeaderSearch () {
     dom.chatHeaderDesc.textContent = `"${query}"`
     showSearchResultsView({
       title: 'Direct Message Results',
-      subtitle: `Search query: ${query}`,
+      subtitle: `Search query: "${query}"`,
       rows: results
     })
     return
@@ -326,7 +428,7 @@ function runHeaderSearch () {
   dom.chatHeaderDesc.textContent = `${scopeLabel} • "${query}"`
   showSearchResultsView({
     title: 'Server Search Results',
-    subtitle: `Scope: ${scopeLabel}`,
+    subtitle: `Scope: ${scopeLabel} — "${query}"`,
     rows: results
   })
 }
@@ -335,13 +437,14 @@ function handleHeaderSearchInput () {
   const query = String(dom.channelSearch?.value || '').trim()
   state.activeSearchChannelId = null
 
-  if (!state.activeRoom || !query) {
+  if (!query) {
     hideSearchDropdown()
-    if (!query) clearSearchResultsView()
+    clearSearchResultsView()
     return
   }
 
-  if (state.activeDmKey) {
+  // No dropdown on home page or DMs — just wait for Enter
+  if (!state.activeRoom || state.activeDmKey) {
     hideSearchDropdown()
     return
   }

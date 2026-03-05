@@ -2,7 +2,7 @@
 
 #### Futura Vox Libera
 
-Peer-to-peer CLI chat with text messaging, file sharing, and a voice-ready architecture — all running over Hyperswarm with no central server.
+Peer-to-peer CLI chat with text messaging, file sharing, voice/video calls, and screen sharing — all running over Hyperswarm with no central server.
 
 Quibble is built on the `quibble` protocol.
 
@@ -117,56 +117,16 @@ Anything else typed at the prompt is sent as a text message.
 │  └────────────────────────────────────────────┘  │
 │                                                  │
 │  File transfer   Dedicated Hypercore per file    │
-│  Voice (ready)   Protomux "quibble-voice" channel │
+│  Voice/Video     WebRTC P2P media, Autobase sig. │
 └──────────────────────────────────────────────────┘
 ```
 
 ### Key concepts
 
 - **Rooms** — Each room is an Autobase whose bootstrap key is encoded as a `pear://quibble/<z32>` invite link. Every writer is also an indexer so any peer can produce the linearized view.
-- **Messages** — JSON objects with a `type` field: `text`, `file`, `system`, `reaction`, `voice`. All carry a sender public key, display name, timestamp, and unique ID.
+- **Messages** — JSON objects with a `type` field: `text`, `file`, `system`, `reaction`, `voice`, etc. All carry a sender public key, display name, timestamp, and unique ID.
 - **Default encryption** — Room messages are encrypted by default with libsodium (`crypto_secretbox`) using a per-room key derived from the room key. `add-writer` control messages remain plaintext so Autobase membership updates still work.
 - **File sharing** — Files are split into 64 KiB blocks in a new Hypercore. A `file` message in the room references the core key; recipients replicate it via Corestore.
-- **Voice (architecture)** — Real-time audio is *not* routed through Autobase. Instead, a Protomux `quibble-voice` channel is opened directly between peers on the Hyperswarm connection, carrying signaling (JSON), raw audio frames, and control messages.
+- **Voice/Video** — Real-time audio, video, and screen-share use the browser's native `RTCPeerConnection` (no PeerJS). Signaling — SDP offers/answers and ICE candidates — flows through the Autobase room channel as `call-signal` messages, reusing the same Hyperswarm replication layer as chat. Call lifecycle events (`call-start`, `call-join`, `call-end`) are also broadcast via Autobase so every member's UI stays in sync. Media itself flows directly peer-to-peer over WebRTC (DTLS/SRTP encrypted) and never touches Autobase. STUN (Cloudflare) and TURN (relay.metered.ca) servers are included by default for NAT traversal; override with `QUIBBLE_ICE_SERVERS_JSON`. The implementation uses the W3C Perfect Negotiation pattern to handle simultaneous offers gracefully.
 - **Offline delivery** — Because messages live in Hypercores replicated through Corestore, a peer joining later will catch up on the full view history.
 - **Paged sync (Git/Torrent-style)** — The Web UI fetches message history in pages by sequence cursor (`beforeSeq`) and loads older pages only when needed, so peers do not transmit an entire database file on each join.
-
-## Project layout
-
-```
-bin/quibble.js        CLI entry point (command: quibble)
-lib/
-  quibble.js          Core orchestrator (Corestore + Hyperswarm + Rooms)
-  room.js             Autobase-backed multi-writer room
-  messages.js         Message type constructors
-  identity.js         Ed25519 keypair management
-  file-transfer.js    File send/receive over Hypercore
-  voice.js            Protomux voice channel (architecture ready)
-test/
-  local.js            Same-machine integration test (local DHT testnet)
-```
-
-## Testing
-
-The integration test spins up a local [HyperDHT testnet](https://github.com/holepunchto/hyperdht) (no internet needed) and runs two peers through room creation, writer addition, messaging, file sharing, and persistence checks.
-
-```bash
-pnpm test
-```
-
-## Dependencies
-
-| Package | Purpose |
-|---|---|
-| autobase | Multi-writer append-only log |
-| corestore | Hypercore storage & replication |
-| hyperswarm | DHT peer discovery |
-| hyperdht | Direct DHT / testnet |
-| hypercore | Append-only log primitive |
-| hypercore-crypto | Ed25519 key generation |
-| protomux | Protocol multiplexing (voice) |
-| compact-encoding | Binary encoding |
-| sodium-universal | Cryptographic signing |
-| z32 | Base32 encoding for invite links |
-| b4a | Buffer/Uint8Array utilities |
-| chalk | Terminal colors |

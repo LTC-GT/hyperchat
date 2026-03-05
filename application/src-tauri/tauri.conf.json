@@ -1,0 +1,70 @@
+{
+  "productName": "Quibble",
+  "version": "0.1.0",
+  "identifier": "org.quibble.desktop",
+  "build": {
+    "beforeDevCommand": "cd .. && pnpm install && pnpm run build:ts",
+    "beforeBuildCommand": "cd .. && pnpm install && pnpm run build:ts",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "http://localhost:3000"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Quibble",
+        "width": 1100,
+        "height": 750,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "visible": false
+      }
+    ],
+    "trayIcon": {
+      "id": "main-tray",
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "tooltip": "Quibble – P2P Chat",
+      "menuOnLeftClick": false
+    },
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "SocialNetworking",
+    "shortDescription": "A Libre P2P Chat Application",
+    "longDescription": "Quibble is a libre peer-to-peer CLI chat (text, files, voice/video) built on Hyperswarm, WebRTC, Autobase & Corestore.",
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

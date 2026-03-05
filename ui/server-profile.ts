@@ -24,7 +24,8 @@ export function createProfileStore (identity: Identity) {
           username: saved.username || saved.name || identity.name,
           avatar: saved.avatar || null,
           presenceStatus: normalizePresenceStatus(saved.presenceStatus),
-          setupDone: Boolean(saved.setupDone)
+          setupDone: Boolean(saved.setupDone),
+          friendRoomKey: saved.friendRoomKey || null
         }
       }
     } catch {}
@@ -35,11 +36,12 @@ export function createProfileStore (identity: Identity) {
       username: fallbackUsername,
       avatar: null,
       presenceStatus: 'active',
-      setupDone: false
+      setupDone: false,
+      friendRoomKey: null as string | null
     }
   }
 
-  function saveProfile (data: Partial<{ fullName: string; username: string; avatar: string | null; presenceStatus: string; setupDone: boolean }> | null) {
+  function saveProfile (data: Partial<{ fullName: string; username: string; avatar: string | null; presenceStatus: string; setupDone: boolean; friendRoomKey: string | null }> | null) {
     const existing = loadProfile()
     const merged = {
       ...existing,

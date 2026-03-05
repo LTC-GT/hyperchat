@@ -17,9 +17,6 @@ importers:
       bip39:
         specifier: ^3.1.0
         version: 3.1.0
-      chalk:
-        specifier: ^5.6.2
-        version: 5.6.2
       compact-encoding:
         specifier: ^2.19.0
         version: 2.19.0
@@ -377,10 +374,6 @@ packages:
 
   caniuse-lite@1.0.30001770:
     resolution: {integrity: sha512-x/2CLQ1jHENRbHg5PSId2sXq1CIO1CISvwWAj027ltMVG2UNgW+w9oH2+HzgEIRFembL8bUlXtfbBHR1fCg2xw==}
-
-  chalk@5.6.2:
-    resolution: {integrity: sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA==}
-    engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
 
   codecs@3.1.0:
     resolution: {integrity: sha512-Dqx8NwvBvnMeuPQdVKy/XEF71igjR5apxBvCGeV0pP1tXadOiaLvDTXt7xh+/5wI1ASB195mXQGJbw3Ml4YDWQ==}
@@ -1104,8 +1097,6 @@ snapshots:
       update-browserslist-db: 1.2.3(browserslist@4.28.1)
 
   caniuse-lite@1.0.30001770: {}
-
-  chalk@5.6.2: {}
 
   codecs@3.1.0:
     dependencies:

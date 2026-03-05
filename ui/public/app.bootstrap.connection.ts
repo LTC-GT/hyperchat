@@ -407,6 +407,20 @@ function handleServerMessage (msg: ServerEnvelope) {
       requestRoomHistory(msg.roomKey, { count: 100 })
       break
 
+    case 'friend-link':
+      if (msg.link) {
+        (state as any).friendLink = msg.link
+      }
+      break
+
+    case 'friend-room-joined':
+      if (!msg.roomKey || !msg.link) break
+      addRoom(msg.roomKey, msg.link, { writable: msg.writable })
+      send({ type: 'watch-room', roomKey: msg.roomKey })
+      requestRoomHistory(msg.roomKey, { count: 100 })
+      // Don't auto-select this room; stay on friends home view
+      break
+
     case 'room-info':
       if (!msg.roomKey || !msg.link) break
       addRoom(msg.roomKey, msg.link, { writable: msg.writable })

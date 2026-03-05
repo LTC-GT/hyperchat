@@ -1,7 +1,7 @@
 {
   "name": "quibble",
   "version": "0.1.0",
-  "description": "P2P CLI chat (text, files, voice-ready) built on Hyperswarm, Autobase & Corestore",
+  "description": "A Libre P2P CLI chat (text, files, voice/video) built on Hyperswarm, WebRTC, Autobase & Corestore",
   "type": "module",
   "main": "dist/lib/quibble.js",
   "bin": {
@@ -17,11 +17,18 @@
     "build:css": "tailwindcss -c tailwind.config.cjs -i ./ui/public/styles.input.css -o ./ui/public/styles.css",
     "watch:css": "tailwindcss -c tailwind.config.cjs -i ./ui/public/styles.input.css -o ./ui/public/styles.css --watch",
     "quibble": "pnpm run build:ts && node dist/bin/quibble.js",
-    "test": "pnpm run build:ts && node --test dist/test/*.test.js"
+    "test": "pnpm run build:ts && node --test dist/test/*.test.js",
+    "desktop:dev": "cd application/src-tauri && cargo tauri dev",
+    "desktop:build": "cd application && bash build.sh",
+    "desktop:build:macos": "cd application && bash build.sh --macos",
+    "desktop:build:linux": "cd application && bash build.sh --linux",
+    "desktop:build:windows": "cd application && bash build.sh --windows",
+    "desktop:build:all": "cd application && bash build.sh --all"
   },
   "keywords": [
     "p2p",
     "chat",
+    "video calling",
     "hyperswarm",
     "autobase",
     "corestore",
@@ -36,7 +43,6 @@
     "autobase": "^7.25.1",
     "b4a": "^1.8.0",
     "bip39": "^3.1.0",
-    "chalk": "^5.6.2",
     "compact-encoding": "^2.19.0",
     "compact-encoding-struct": "^1.2.0",
     "corestore": "^7.8.0",
